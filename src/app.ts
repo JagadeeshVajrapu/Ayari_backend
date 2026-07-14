@@ -11,6 +11,9 @@ import { UPLOAD_ROOT } from './middlewares/upload.middleware';
 
 const app = express();
 
+// Required behind Hostinger / nginx reverse proxies
+app.set('trust proxy', 1);
+
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
