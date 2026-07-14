@@ -19,6 +19,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:push": "prisma db push",
+    "seed": "prisma db seed",
     "prisma:seed": "prisma db seed",
     "prisma:studio": "prisma studio",
     "db:setup": "npm run db:up && npm run prisma:migrate && npm run prisma:seed"
