@@ -1,0 +1,261 @@
+import {
+  NotificationCategory,
+  NotificationPriority,
+  NotificationType,
+} from '@prisma/client';
+
+export interface NotificationEventDefinition {
+  type: NotificationType;
+  category: NotificationCategory;
+  priority: NotificationPriority;
+  icon: string;
+  title: string;
+  emailTemplate?: string;
+  sendEmail?: boolean;
+}
+
+export const NOTIFICATION_EVENTS: Partial<Record<NotificationType, NotificationEventDefinition>> = {
+  USER_REGISTERED: {
+    type: NotificationType.USER_REGISTERED,
+    category: NotificationCategory.ACCOUNT,
+    priority: NotificationPriority.NORMAL,
+    icon: 'user-plus',
+    title: 'Welcome to AYARI',
+    emailTemplate: 'welcome',
+    sendEmail: true,
+  },
+  EMAIL_VERIFIED: {
+    type: NotificationType.EMAIL_VERIFIED,
+    category: NotificationCategory.ACCOUNT,
+    priority: NotificationPriority.NORMAL,
+    icon: 'mail-check',
+    title: 'Email Verified',
+    emailTemplate: 'email-verification',
+    sendEmail: true,
+  },
+  PASSWORD_CHANGED: {
+    type: NotificationType.PASSWORD_CHANGED,
+    category: NotificationCategory.SECURITY,
+    priority: NotificationPriority.HIGH,
+    icon: 'shield',
+    title: 'Password Changed',
+    sendEmail: true,
+    emailTemplate: 'password-reset',
+  },
+  LOGIN_NEW_DEVICE: {
+    type: NotificationType.LOGIN_NEW_DEVICE,
+    category: NotificationCategory.SECURITY,
+    priority: NotificationPriority.HIGH,
+    icon: 'smartphone',
+    title: 'New Login Detected',
+  },
+  PRODUCT_BACK_IN_STOCK: {
+    type: NotificationType.PRODUCT_BACK_IN_STOCK,
+    category: NotificationCategory.WISHLIST,
+    priority: NotificationPriority.NORMAL,
+    icon: 'package',
+    title: 'Back In Stock',
+  },
+  WISHLIST_DISCOUNT: {
+    type: NotificationType.WISHLIST_DISCOUNT,
+    category: NotificationCategory.WISHLIST,
+    priority: NotificationPriority.NORMAL,
+    icon: 'heart',
+    title: 'Wishlist Price Drop',
+  },
+  COUPON_AVAILABLE: {
+    type: NotificationType.COUPON_AVAILABLE,
+    category: NotificationCategory.COUPON,
+    priority: NotificationPriority.LOW,
+    icon: 'tag',
+    title: 'New Coupon Available',
+  },
+  ORDER_CREATED: {
+    type: NotificationType.ORDER_CREATED,
+    category: NotificationCategory.ORDER,
+    priority: NotificationPriority.NORMAL,
+    icon: 'shopping-bag',
+    title: 'Order Placed',
+    emailTemplate: 'order-confirmation',
+    sendEmail: true,
+  },
+  ORDER_CONFIRMED: {
+    type: NotificationType.ORDER_CONFIRMED,
+    category: NotificationCategory.ORDER,
+    priority: NotificationPriority.NORMAL,
+    icon: 'check-circle',
+    title: 'Order Confirmed',
+    emailTemplate: 'order-confirmation',
+    sendEmail: true,
+  },
+  PAYMENT_SUCCESSFUL: {
+    type: NotificationType.PAYMENT_SUCCESSFUL,
+    category: NotificationCategory.PAYMENT,
+    priority: NotificationPriority.HIGH,
+    icon: 'credit-card',
+    title: 'Payment Successful',
+    emailTemplate: 'payment-successful',
+    sendEmail: true,
+  },
+  PAYMENT_FAILED: {
+    type: NotificationType.PAYMENT_FAILED,
+    category: NotificationCategory.PAYMENT,
+    priority: NotificationPriority.HIGH,
+    icon: 'x-circle',
+    title: 'Payment Failed',
+    emailTemplate: 'payment-failed',
+    sendEmail: true,
+  },
+  PAYMENT_REFUNDED: {
+    type: NotificationType.PAYMENT_REFUNDED,
+    category: NotificationCategory.PAYMENT,
+    priority: NotificationPriority.NORMAL,
+    icon: 'wallet',
+    title: 'Payment Refunded',
+  },
+  SHIPMENT_CONFIRMED: {
+    type: NotificationType.SHIPMENT_CONFIRMED,
+    category: NotificationCategory.SHIPMENT,
+    priority: NotificationPriority.NORMAL,
+    icon: 'truck',
+    title: 'Shipment Confirmed',
+    emailTemplate: 'shipment-confirmed',
+    sendEmail: true,
+  },
+  PACKING_STARTED: {
+    type: NotificationType.PACKING_STARTED,
+    category: NotificationCategory.SHIPMENT,
+    priority: NotificationPriority.NORMAL,
+    icon: 'package-open',
+    title: 'Packing Started',
+  },
+  PACKED: {
+    type: NotificationType.PACKED,
+    category: NotificationCategory.SHIPMENT,
+    priority: NotificationPriority.NORMAL,
+    icon: 'package',
+    title: 'Order Packed',
+    emailTemplate: 'packed',
+    sendEmail: true,
+  },
+  COURIER_ASSIGNED: {
+    type: NotificationType.COURIER_ASSIGNED,
+    category: NotificationCategory.SHIPMENT,
+    priority: NotificationPriority.NORMAL,
+    icon: 'truck',
+    title: 'Courier Assigned',
+  },
+  PICKED_UP: {
+    type: NotificationType.PICKED_UP,
+    category: NotificationCategory.SHIPMENT,
+    priority: NotificationPriority.NORMAL,
+    icon: 'truck',
+    title: 'Package Picked Up',
+  },
+  IN_TRANSIT: {
+    type: NotificationType.IN_TRANSIT,
+    category: NotificationCategory.SHIPMENT,
+    priority: NotificationPriority.NORMAL,
+    icon: 'navigation',
+    title: 'Package In Transit',
+  },
+  REACHED_HUB: {
+    type: NotificationType.REACHED_HUB,
+    category: NotificationCategory.DELIVERY,
+    priority: NotificationPriority.NORMAL,
+    icon: 'building',
+    title: 'Reached Sorting Hub',
+  },
+  OUT_FOR_DELIVERY: {
+    type: NotificationType.OUT_FOR_DELIVERY,
+    category: NotificationCategory.DELIVERY,
+    priority: NotificationPriority.HIGH,
+    icon: 'map-pin',
+    title: 'Out For Delivery',
+    emailTemplate: 'out-for-delivery',
+    sendEmail: true,
+  },
+  DELIVERED: {
+    type: NotificationType.DELIVERED,
+    category: NotificationCategory.DELIVERY,
+    priority: NotificationPriority.HIGH,
+    icon: 'check',
+    title: 'Delivered',
+    emailTemplate: 'delivered',
+    sendEmail: true,
+  },
+  CANCELLED: {
+    type: NotificationType.CANCELLED,
+    category: NotificationCategory.ORDER,
+    priority: NotificationPriority.HIGH,
+    icon: 'x-circle',
+    title: 'Shipment Cancelled',
+  },
+  RETURNED: {
+    type: NotificationType.RETURNED,
+    category: NotificationCategory.RETURN,
+    priority: NotificationPriority.NORMAL,
+    icon: 'rotate-ccw',
+    title: 'Package Returned',
+  },
+  RETURN_REQUESTED: {
+    type: NotificationType.RETURN_REQUESTED,
+    category: NotificationCategory.RETURN,
+    priority: NotificationPriority.NORMAL,
+    icon: 'rotate-ccw',
+    title: 'Return Requested',
+  },
+  RETURN_APPROVED: {
+    type: NotificationType.RETURN_APPROVED,
+    category: NotificationCategory.RETURN,
+    priority: NotificationPriority.NORMAL,
+    icon: 'check-circle',
+    title: 'Return Approved',
+    emailTemplate: 'return-approved',
+    sendEmail: true,
+  },
+  REFUND_INITIATED: {
+    type: NotificationType.REFUND_INITIATED,
+    category: NotificationCategory.REFUND,
+    priority: NotificationPriority.NORMAL,
+    icon: 'refresh-cw',
+    title: 'Refund Initiated',
+  },
+  REFUND_COMPLETED: {
+    type: NotificationType.REFUND_COMPLETED,
+    category: NotificationCategory.REFUND,
+    priority: NotificationPriority.HIGH,
+    icon: 'wallet',
+    title: 'Refund Completed',
+    emailTemplate: 'refund-completed',
+    sendEmail: true,
+  },
+  NEWSLETTER: {
+    type: NotificationType.NEWSLETTER,
+    category: NotificationCategory.OFFER,
+    priority: NotificationPriority.LOW,
+    icon: 'mail',
+    title: 'AYARI Newsletter',
+    emailTemplate: 'newsletter',
+    sendEmail: true,
+  },
+  SYSTEM_BROADCAST: {
+    type: NotificationType.SYSTEM_BROADCAST,
+    category: NotificationCategory.SYSTEM,
+    priority: NotificationPriority.NORMAL,
+    icon: 'bell',
+    title: 'System Announcement',
+  },
+};
+
+export function getEventDefinition(type: NotificationType): NotificationEventDefinition {
+  return (
+    NOTIFICATION_EVENTS[type] ?? {
+      type,
+      category: NotificationCategory.SYSTEM,
+      priority: NotificationPriority.NORMAL,
+      icon: 'bell',
+      title: 'Notification',
+    }
+  );
+}
