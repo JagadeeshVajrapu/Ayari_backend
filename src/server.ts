@@ -6,9 +6,9 @@ import { connectDatabase, disconnectDatabase } from './database/prisma';
 import { initSocketGateway } from './socket';
 import { notificationService } from './services/notification.service';
 
-async function bootstrap(): Promise<void> {
-  await connectDatabase();
-
+function bootstrap(): void {
+  // Hostinger Node.js hosting requires listen() within ~3 seconds.
+  // Do not await database connection before opening the HTTP server.
   const httpServer = http.createServer(app);
   initSocketGateway(httpServer);
 
@@ -17,7 +17,16 @@ async function bootstrap(): Promise<void> {
     console.log(`Socket.IO ready for real-time shipment tracking`);
   });
 
-  setInterval(() => {
+  connectDatabase()
+    .then(() => {
+      console.log('Database connected');
+    })
+    .catch((error) => {
+      console.error('Database connection failed:', error);
+      process.exit(1);
+    });
+
+  const emailQueueTimer = setInterval(() => {
     notificationService.processEmailQueue().catch((err) => {
       console.error('Email queue processing error:', err);
     });
@@ -25,17 +34,20 @@ async function bootstrap(): Promise<void> {
 
   const shutdown = async (signal: string) => {
     console.log(`\n${signal} received. Shutting down gracefully...`);
+    clearInterval(emailQueueTimer);
     httpServer.close(async () => {
       await disconnectDatabase();
       process.exit(0);
     });
   };
 
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
-bootstrap().catch((error) => {
+try {
+  bootstrap();
+} catch (error) {
   console.error('Failed to start server:', error);
   process.exit(1);
-});
+}
