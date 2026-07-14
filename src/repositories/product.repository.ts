@@ -131,6 +131,7 @@ export class ProductRepository {
     categoryId: string;
     isActive?: boolean;
     isFeatured?: boolean;
+    sizes?: string[];
     productImages: ProductImageInput[];
     featuredImages: ProductImageInput[];
   }): Promise<ProductWithRelations> {
@@ -147,6 +148,7 @@ export class ProductRepository {
         categoryId: data.categoryId,
         isActive: data.isActive ?? true,
         isFeatured: data.isFeatured ?? false,
+        sizes: data.sizes ?? [],
         images: {
           create: data.productImages.map((img, i) => ({
             url: img.url,
@@ -183,6 +185,7 @@ export class ProductRepository {
       categoryId: string;
       isActive: boolean;
       isFeatured: boolean;
+      sizes: string[];
       productImages: ProductImageInput[];
       featuredImages: ProductImageInput[];
     }>,

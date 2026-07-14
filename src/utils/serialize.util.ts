@@ -50,12 +50,13 @@ export function serializeProduct(
     categorySlug: product.category.slug,
     isActive: product.isActive,
     isFeatured: product.isFeatured,
+    sizes: product.sizes ?? [],
     image: primaryImage?.url ?? null,
     images: product.images.map(serializeImage),
     featuredImages: product.featuredImages.map(serializeImage),
-    galleryImages: product.featuredImages.length
-      ? product.featuredImages.map((img) => img.url)
-      : product.images.map((img) => img.url),
+    galleryImages: product.images.length
+      ? product.images.map((img) => img.url)
+      : product.featuredImages.map((img) => img.url),
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
   };

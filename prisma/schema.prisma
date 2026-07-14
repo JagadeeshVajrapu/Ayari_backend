@@ -109,6 +109,7 @@ model Product {
   categoryId        String         @map("category_id")
   isActive          Boolean        @default(true) @map("is_active")
   isFeatured        Boolean        @default(false) @map("is_featured")
+  sizes             String[]       @default([])
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   cartItems         CartItem[]

@@ -24,6 +24,7 @@ export const createProductSchema = z.object({
   stockQuantity: z.coerce.number().int().min(0).default(0),
   lowStockThreshold: z.coerce.number().int().min(0).default(5),
   categoryId: z.string().min(1),
+  sizes: z.array(z.string().min(1).max(30).trim()).max(20).default([]),
   productImages: z.array(imageInputSchema).min(1).max(10),
   featuredImages: z.array(imageInputSchema).min(1).max(10),
   isActive: z.boolean().default(true),
