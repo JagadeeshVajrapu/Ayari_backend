@@ -24,8 +24,9 @@ router.use('/categories', categoryRoutes);
 router.use('/users', userRouter);
 router.use('/users/me', customerShipmentRouter);
 router.use('/shipments/track', publicShipmentRouter);
-router.use('/', trackingRoutes);
 
+// Public — must be registered before router.use('/', trackingRoutes)
+// because that mount applies auth middleware to all remaining paths.
 router.get('/health', (_req, res) => {
   res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
   res.json({
@@ -34,5 +35,7 @@ router.get('/health', (_req, res) => {
     data: { status: 'healthy' },
   });
 });
+
+router.use('/', trackingRoutes);
 
 export default router;
