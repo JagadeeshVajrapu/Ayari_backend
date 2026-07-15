@@ -1,12 +1,37 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../database/prisma';
 
+const categoryListInclude = {
+  _count: {
+    select: {
+      products: { where: { isActive: true } },
+    },
+  },
+  products: {
+    where: { isActive: true },
+    take: 1,
+    orderBy: [{ isFeatured: 'desc' as const }, { updatedAt: 'desc' as const }],
+    include: {
+      images: {
+        orderBy: [{ isPrimary: 'desc' as const }, { sortOrder: 'asc' as const }],
+        take: 1,
+      },
+      featuredImages: {
+        orderBy: { sortOrder: 'asc' as const },
+        take: 1,
+      },
+    },
+  },
+} satisfies Prisma.CategoryInclude;
+
+export type CategoryWithCover = Prisma.CategoryGetPayload<{
+  include: typeof categoryListInclude;
+}>;
+
 export class CategoryRepository {
-  async findMany(): Promise<
-    Prisma.CategoryGetPayload<{ include: { _count: { select: { products: true } } } }>[]
-  > {
+  async findMany(): Promise<CategoryWithCover[]> {
     return prisma.category.findMany({
-      include: { _count: { select: { products: true } } },
+      include: categoryListInclude,
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
   }

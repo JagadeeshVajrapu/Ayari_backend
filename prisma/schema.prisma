@@ -110,6 +110,8 @@ model Product {
   isActive          Boolean        @default(true) @map("is_active")
   isFeatured        Boolean        @default(false) @map("is_featured")
   sizes             String[]       @default([])
+  colorVariants     Json           @default("[]") @map("color_variants")
+  setVariants       Json           @default("[]") @map("set_variants")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   cartItems         CartItem[]
@@ -132,6 +134,7 @@ model ProductImage {
   productId          String   @map("product_id")
   url                String
   cloudinaryPublicId String?  @map("cloudinary_public_id")
+  folder             String?
   altText            String?  @map("alt_text")
   sortOrder          Int      @default(0) @map("sort_order")
   isPrimary          Boolean  @default(false) @map("is_primary")
@@ -148,6 +151,7 @@ model FeaturedImage {
   productId          String   @map("product_id")
   url                String
   cloudinaryPublicId String?  @map("cloudinary_public_id")
+  folder             String?
   altText            String?  @map("alt_text")
   sortOrder          Int      @default(0) @map("sort_order")
   createdAt          DateTime @default(now()) @map("created_at")

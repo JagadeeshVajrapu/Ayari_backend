@@ -12,7 +12,9 @@ function serializeImage(img: {
   altText: string | null;
   sortOrder: number;
   cloudinaryPublicId?: string | null;
+  folder?: string | null;
   isPrimary?: boolean;
+  createdAt?: Date;
 }) {
   return {
     id: img.id,
@@ -20,8 +22,15 @@ function serializeImage(img: {
     altText: img.altText,
     sortOrder: img.sortOrder,
     cloudinaryPublicId: img.cloudinaryPublicId ?? null,
+    folder: img.folder ?? null,
     ...(img.isPrimary !== undefined ? { isPrimary: img.isPrimary } : {}),
+    ...(img.createdAt ? { createdAt: img.createdAt.toISOString() } : {}),
   };
+}
+
+function parseJsonVariants<T>(value: unknown): T[] {
+  if (!Array.isArray(value)) return [];
+  return value as T[];
 }
 
 export function serializeProduct(
@@ -51,6 +60,8 @@ export function serializeProduct(
     isActive: product.isActive,
     isFeatured: product.isFeatured,
     sizes: product.sizes ?? [],
+    colorVariants: parseJsonVariants(product.colorVariants),
+    setVariants: parseJsonVariants(product.setVariants),
     image: primaryImage?.url ?? null,
     images: product.images.map(serializeImage),
     featuredImages: product.featuredImages.map(serializeImage),
@@ -138,15 +149,42 @@ export function serializeCustomer(
   };
 }
 
+export function resolveCategoryCoverImage(category: {
+  imageUrl?: string | null;
+  products?: Array<{
+    images?: Array<{ url: string }>;
+    featuredImages?: Array<{ url: string }>;
+  }>;
+}): string | null {
+  if (category.imageUrl) return category.imageUrl;
+  const product = category.products?.[0];
+  if (!product) return null;
+  return product.images?.[0]?.url ?? product.featuredImages?.[0]?.url ?? null;
+}
+
 export function serializeCategory(
-  category: Prisma.CategoryGetPayload<{ include: { _count: { select: { products: true } } } }>,
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    imageUrl: string | null;
+    sortOrder: number;
+    isActive: boolean;
+    createdAt: Date;
+    _count: { products: number };
+    products?: Array<{
+      images?: Array<{ url: string }>;
+      featuredImages?: Array<{ url: string }>;
+    }>;
+  },
 ) {
   return {
     id: category.id,
     name: category.name,
     slug: category.slug,
     description: category.description,
-    imageUrl: category.imageUrl,
+    imageUrl: resolveCategoryCoverImage(category),
     sortOrder: category.sortOrder,
     isActive: category.isActive,
     productCount: category._count.products,

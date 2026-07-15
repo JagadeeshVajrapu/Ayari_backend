@@ -11,6 +11,11 @@ const productInclude = {
 
 type ProductWithRelations = Prisma.ProductGetPayload<{ include: typeof productInclude }>;
 
+function resolvePrimaryIndex(incoming: ProductImageInput[]): number {
+  const marked = incoming.findIndex((img) => img.isPrimary === true);
+  return marked >= 0 ? marked : 0;
+}
+
 async function syncProductImages(
   productId: string,
   existing: Array<{ id: string; cloudinaryPublicId: string | null }>,
@@ -26,26 +31,34 @@ async function syncProductImages(
     await prisma.productImage.deleteMany({ where: { id: { in: removed.map((img) => img.id) } } });
   }
 
+  const primaryIndex = resolvePrimaryIndex(incoming);
   const toCreate: Prisma.ProductImageCreateManyInput[] = [];
 
   for (let i = 0; i < incoming.length; i++) {
     const img = incoming[i];
     const sortOrder = img.sortOrder ?? i;
     const altText = img.altText ?? altTextFallback;
+    const isPrimary = i === primaryIndex;
 
     if (img.id) {
       await prisma.productImage.update({
         where: { id: img.id },
-        data: { sortOrder, altText, isPrimary: i === 0 },
+        data: {
+          sortOrder,
+          altText,
+          isPrimary,
+          ...(img.folder !== undefined ? { folder: img.folder } : {}),
+        },
       });
     } else {
       toCreate.push({
         productId,
         url: img.url,
         cloudinaryPublicId: img.cloudinaryPublicId ?? null,
+        folder: img.folder ?? null,
         altText,
         sortOrder,
-        isPrimary: i === 0,
+        isPrimary,
       });
     }
   }
@@ -132,6 +145,8 @@ export class ProductRepository {
     isActive?: boolean;
     isFeatured?: boolean;
     sizes?: string[];
+    colorVariants?: unknown;
+    setVariants?: unknown;
     productImages: ProductImageInput[];
     featuredImages: ProductImageInput[];
   }): Promise<ProductWithRelations> {
@@ -149,19 +164,26 @@ export class ProductRepository {
         isActive: data.isActive ?? true,
         isFeatured: data.isFeatured ?? false,
         sizes: data.sizes ?? [],
+        colorVariants: (data.colorVariants ?? []) as Prisma.InputJsonValue,
+        setVariants: (data.setVariants ?? []) as Prisma.InputJsonValue,
         images: {
-          create: data.productImages.map((img, i) => ({
-            url: img.url,
-            cloudinaryPublicId: img.cloudinaryPublicId ?? null,
-            altText: img.altText ?? data.name,
-            isPrimary: i === 0,
-            sortOrder: img.sortOrder ?? i,
-          })),
+          create: (() => {
+            const primaryIndex = resolvePrimaryIndex(data.productImages);
+            return data.productImages.map((img, i) => ({
+              url: img.url,
+              cloudinaryPublicId: img.cloudinaryPublicId ?? null,
+              folder: img.folder ?? null,
+              altText: img.altText ?? data.name,
+              isPrimary: i === primaryIndex,
+              sortOrder: img.sortOrder ?? i,
+            }));
+          })(),
         },
         featuredImages: {
-          create: data.featuredImages.map((img, i) => ({
+          create: (data.featuredImages ?? []).map((img, i) => ({
             url: img.url,
             cloudinaryPublicId: img.cloudinaryPublicId ?? null,
+            folder: img.folder ?? null,
             altText: img.altText ?? data.name,
             sortOrder: img.sortOrder ?? i,
           })),
@@ -186,11 +208,13 @@ export class ProductRepository {
       isActive: boolean;
       isFeatured: boolean;
       sizes: string[];
+      colorVariants: unknown;
+      setVariants: unknown;
       productImages: ProductImageInput[];
       featuredImages: ProductImageInput[];
     }>,
   ): Promise<ProductWithRelations> {
-    const { productImages, featuredImages, ...productData } = data;
+    const { productImages, featuredImages, colorVariants, setVariants, ...productData } = data;
 
     const existing = await prisma.product.findUniqueOrThrow({
       where: { id },
@@ -199,7 +223,15 @@ export class ProductRepository {
 
     await prisma.product.update({
       where: { id },
-      data: productData,
+      data: {
+        ...productData,
+        ...(colorVariants !== undefined
+          ? { colorVariants: colorVariants as Prisma.InputJsonValue }
+          : {}),
+        ...(setVariants !== undefined
+          ? { setVariants: setVariants as Prisma.InputJsonValue }
+          : {}),
+      },
     });
 
     if (productImages) {
@@ -265,13 +297,18 @@ async function syncFeaturedImages(
     if (img.id) {
       await prisma.featuredImage.update({
         where: { id: img.id },
-        data: { sortOrder, altText },
+        data: {
+          sortOrder,
+          altText,
+          ...(img.folder !== undefined ? { folder: img.folder } : {}),
+        },
       });
     } else {
       toCreate.push({
         productId,
         url: img.url,
         cloudinaryPublicId: img.cloudinaryPublicId ?? null,
+        folder: img.folder ?? null,
         altText,
         sortOrder,
       });

@@ -1,22 +1,18 @@
 import type { Server as HttpServer } from 'http';
 import { Server } from 'socket.io';
 import { UserRole } from '@prisma/client';
-import { env } from '../config/env';
 import { trackingRepository } from '../repositories/tracking.repository';
 import { authenticateSocket, type AuthenticatedSocket } from './socket.auth';
 import { connectionManager } from './connection.manager';
 import { socketService } from './socket.service';
 import { SOCKET_EVENTS } from './socket.types';
+import { isOriginAllowed } from '../utils/cors.util';
 
 export function initSocketGateway(httpServer: HttpServer): Server {
   const io = new Server(httpServer, {
     cors: {
       origin: (origin, callback) => {
-        if (!origin || origin === env.FRONTEND_URL) {
-          callback(null, true);
-          return;
-        }
-        if (env.NODE_ENV === 'development' && /^http:\/\/localhost:\d+$/.test(origin)) {
+        if (isOriginAllowed(origin)) {
           callback(null, true);
           return;
         }

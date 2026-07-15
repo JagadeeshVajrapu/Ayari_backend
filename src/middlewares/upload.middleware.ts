@@ -15,8 +15,6 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
-  'image/gif',
-  'image/avif',
 ]);
 
 function fileFilter(
@@ -25,7 +23,7 @@ function fileFilter(
   cb: multer.FileFilterCallback,
 ) {
   if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
-    cb(new Error('Only JPEG, PNG, WebP, GIF, and AVIF images are allowed'));
+    cb(new Error('Only JPG, JPEG, PNG, and WebP images are allowed'));
     return;
   }
   cb(null, true);

@@ -1,7 +1,7 @@
 import http from 'http';
 import 'dotenv/config';
 import app from './app';
-import { env } from './config/env';
+import { env, getCloudinaryCloudName, isCloudinaryEnvConfigured } from './config/env';
 import { connectDatabase, disconnectDatabase } from './database/prisma';
 import { initSocketGateway } from './socket';
 import { notificationService } from './services/notification.service';
@@ -15,6 +15,18 @@ function bootstrap(): void {
   httpServer.listen(env.PORT, () => {
     console.log(`Server running on port ${env.PORT} [${env.NODE_ENV}]`);
     console.log(`Socket.IO ready for real-time shipment tracking`);
+    if (isCloudinaryEnvConfigured()) {
+      console.log(`Cloudinary ready (cloud: ${getCloudinaryCloudName()})`);
+    } else {
+      const raw = env.CLOUDINARY_CLOUD_NAME?.trim();
+      if (raw && /\s/.test(raw)) {
+        console.warn(
+          `Cloudinary disabled: CLOUDINARY_CLOUD_NAME="${raw}" is invalid. Use dashboard cloud name (e.g. zf3w0zec), not API key name.`,
+        );
+      } else {
+        console.warn('Cloudinary not configured — uploads will use local /uploads folder');
+      }
+    }
   });
 
   connectDatabase()

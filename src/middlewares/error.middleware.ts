@@ -36,7 +36,10 @@ export function errorHandler(
     return sendError(res, err.message, 400);
   }
 
-  if (err.message?.includes('Only JPEG, PNG, WebP, GIF, and AVIF')) {
+  if (
+    err.message?.includes('Only JPG, JPEG, PNG, and WebP') ||
+    err.message?.includes('Only JPEG, PNG, WebP, GIF, and AVIF')
+  ) {
     return sendError(res, err.message, 400);
   }
 
@@ -51,6 +54,11 @@ export function errorHandler(
 
   if (env.NODE_ENV === 'development') {
     console.error(err);
+    // Surface actionable errors locally so admins can fix env/config quickly
+    if (err.message?.includes('Cloudinary is not configured')) {
+      return sendError(res, err.message, 503);
+    }
+    return sendError(res, err.message || 'Internal server error', 500);
   }
 
   return sendError(res, 'Internal server error', 500);

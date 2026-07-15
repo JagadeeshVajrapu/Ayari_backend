@@ -36,11 +36,19 @@ const envSchema = z.object({
 });
 
 export function isCloudinaryEnvConfigured(): boolean {
-  return Boolean(
-    process.env.CLOUDINARY_CLOUD_NAME?.trim() &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET,
-  );
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
+  if (!cloudName || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    return false;
+  }
+  // Cloud name is a short id (e.g. zf3w0zec) — NOT the API key display name
+  if (/\s/.test(cloudName)) return false;
+  return true;
+}
+
+export function getCloudinaryCloudName(): string | null {
+  const cloudName = env.CLOUDINARY_CLOUD_NAME?.trim();
+  if (!cloudName || /\s/.test(cloudName)) return null;
+  return cloudName;
 }
 
 export type Env = z.infer<typeof envSchema>;

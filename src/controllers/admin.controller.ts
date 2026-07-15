@@ -58,11 +58,25 @@ export class AdminController {
       throw new BadRequestError('No image file provided');
     }
 
-    const folder = req.query.type === 'featured' ? 'featured' : 'products';
+    const typeParam = String(req.query.type ?? 'product');
+    const isGallery = typeParam === 'featured' || typeParam === 'gallery' || typeParam === 'gallery-images';
+    const folderType = isGallery ? 'gallery-images' : 'product-images';
+
+    const categoryName = String(req.query.categoryName ?? req.body?.categoryName ?? 'uncategorized');
+    const productName = String(req.query.productName ?? req.body?.productName ?? 'product');
+
+    const { buildProductMediaFolder } = await import('../utils/cloudinary-folder.util');
+    const folder = buildProductMediaFolder(categoryName, productName, folderType);
+
     const { uploadImage } = await import('../services/cloudinary.service');
     const result = await uploadImage(req.file.buffer, folder, req.file.originalname);
 
-    sendSuccess(res, 'Image uploaded', { url: result.url, publicId: result.publicId }, 201);
+    sendSuccess(
+      res,
+      'Image uploaded',
+      { url: result.url, publicId: result.publicId, folder: result.folder },
+      201,
+    );
   });
 
   listOrders = asyncHandler(async (req: Request, res: Response) => {

@@ -4,10 +4,10 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import paymentRoutes from './routes/payment.routes';
 import { paymentController } from './controllers/payment.controller';
-import { env } from './config/env';
 import routes from './routes';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware';
 import { UPLOAD_ROOT } from './middlewares/upload.middleware';
+import { isOriginAllowed } from './utils/cors.util';
 
 const app = express();
 
@@ -22,21 +22,10 @@ app.use(
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) {
+      if (isOriginAllowed(origin)) {
         callback(null, true);
         return;
       }
-
-      if (origin === env.FRONTEND_URL) {
-        callback(null, true);
-        return;
-      }
-
-      if (env.NODE_ENV === 'development' && /^http:\/\/localhost:\d+$/.test(origin)) {
-        callback(null, true);
-        return;
-      }
-
       callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
     credentials: true,
