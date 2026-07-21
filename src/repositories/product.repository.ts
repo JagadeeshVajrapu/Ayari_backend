@@ -78,6 +78,7 @@ export class ProductRepository {
   async findMany(params?: {
     search?: string;
     categoryId?: string;
+    categoryIds?: string[];
     isActive?: boolean;
     isFeatured?: boolean;
     inStockOnly?: boolean;
@@ -88,24 +89,67 @@ export class ProductRepository {
     orderBy?: Prisma.ProductOrderByWithRelationInput | Prisma.ProductOrderByWithRelationInput[];
   }): Promise<{ items: ProductWithRelations[]; total: number }> {
     const where: Prisma.ProductWhereInput = {};
+    const andConditions: Prisma.ProductWhereInput[] = [];
 
     if (params?.search) {
       where.OR = [
         { name: { contains: params.search, mode: 'insensitive' } },
         { sku: { contains: params.search, mode: 'insensitive' } },
         { slug: { contains: params.search, mode: 'insensitive' } },
+        { description: { contains: params.search, mode: 'insensitive' } },
+        { category: { name: { contains: params.search, mode: 'insensitive' } } },
+        {
+          variants: {
+            some: {
+              OR: [
+                { name: { contains: params.search, mode: 'insensitive' } },
+                { sku: { contains: params.search, mode: 'insensitive' } },
+              ],
+            },
+          },
+        },
       ];
     }
 
-    if (params?.categoryId) where.categoryId = params.categoryId;
+    if (params?.categoryIds?.length) {
+      where.categoryId = { in: params.categoryIds };
+    } else if (params?.categoryId) {
+      where.categoryId = params.categoryId;
+    }
     if (params?.isActive !== undefined) where.isActive = params.isActive;
     if (params?.isFeatured !== undefined) where.isFeatured = params.isFeatured;
-    if (params?.inStockOnly) where.stockQuantity = { gt: 0 };
+    if (params?.inStockOnly) {
+      andConditions.push({
+        OR: [
+          { stockQuantity: { gt: 0 } },
+          { variants: { some: { isActive: true, stockQuantity: { gt: 0 } } } },
+        ],
+      });
+    }
     if (params?.priceMin !== undefined || params?.priceMax !== undefined) {
-      where.price = {
+      const priceRange = {
         ...(params.priceMin !== undefined ? { gte: params.priceMin } : {}),
         ...(params.priceMax !== undefined ? { lte: params.priceMax } : {}),
       };
+      andConditions.push({
+        OR: [
+          { variants: { none: { isActive: true } }, price: priceRange },
+          {
+            variants: {
+              some: { isActive: true, isDefault: true, price: priceRange },
+            },
+          },
+          {
+            price: priceRange,
+            variants: {
+              some: { isActive: true, isDefault: true, price: null },
+            },
+          },
+        ],
+      });
+    }
+    if (andConditions.length) {
+      where.AND = andConditions;
     }
 
     const orderBy = params?.orderBy ?? { createdAt: 'desc' };

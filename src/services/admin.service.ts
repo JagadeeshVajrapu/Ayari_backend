@@ -253,22 +253,34 @@ export class ProductService {
     limit: number;
     search?: string;
     category?: string;
+    categories?: string[];
     featured?: boolean;
     inStockOnly?: boolean;
     priceMin?: number;
     priceMax?: number;
     sort?: 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'name-asc';
   }) {
-    let categoryId: string | undefined;
-    if (params.category) {
-      const cat = await prisma.category.findFirst({
-        where: {
-          isActive: true,
-          OR: [{ slug: params.category }, { name: { equals: params.category, mode: 'insensitive' } }],
-        },
-      });
-      categoryId = cat?.id;
-      if (params.category && !categoryId) {
+    const categoryKeys = params.categories?.length
+      ? params.categories
+      : params.category
+        ? [params.category]
+        : [];
+
+    let categoryIds: string[] | undefined;
+    if (categoryKeys.length) {
+      const resolved = await Promise.all(
+        categoryKeys.map((key) =>
+          prisma.category.findFirst({
+            where: {
+              isActive: true,
+              OR: [{ slug: key }, { name: { equals: key, mode: 'insensitive' } }],
+            },
+            select: { id: true },
+          }),
+        ),
+      );
+      categoryIds = resolved.filter(Boolean).map((cat) => cat!.id);
+      if (categoryIds.length === 0) {
         return {
           items: [],
           pagination: { page: params.page, limit: params.limit, total: 0, totalPages: 0 },
@@ -295,7 +307,7 @@ export class ProductService {
     const skip = (params.page - 1) * params.limit;
     const { items, total } = await productRepository.findMany({
       search: params.search,
-      categoryId,
+      categoryIds,
       isActive: true,
       isFeatured: params.featured ? true : undefined,
       inStockOnly: params.inStockOnly,

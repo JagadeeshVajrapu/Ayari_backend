@@ -158,6 +158,10 @@ export class ProductController {
     const limit = Number(req.query.limit ?? 24);
     const search = req.query.search as string | undefined;
     const category = req.query.category as string | undefined;
+    const categoriesRaw = req.query.categories as string | undefined;
+    const categories = categoriesRaw
+      ? categoriesRaw.split(',').map((value) => value.trim()).filter(Boolean)
+      : undefined;
     const featured = req.query.featured === 'true';
     const inStockOnly = req.query.inStock === 'true';
     const priceMin = req.query.priceMin ? Number(req.query.priceMin) : undefined;
@@ -175,6 +179,7 @@ export class ProductController {
       limit,
       search,
       category,
+      categories,
       featured,
       inStockOnly,
       priceMin,
