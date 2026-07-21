@@ -74,6 +74,10 @@ export class EmailService {
     const transporter = this.getTransporter();
 
     if (!transporter) {
+      if (env.NODE_ENV === 'production') {
+        // Never dump email contents (OTPs, reset codes) into production logs.
+        throw new Error('SMTP is not configured — cannot deliver email in production');
+      }
       this.logToConsole(to, subject, text);
       return;
     }

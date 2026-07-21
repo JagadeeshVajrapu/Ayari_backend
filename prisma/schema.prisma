@@ -118,6 +118,7 @@ model Product {
   orderItems        OrderItem[]
   images            ProductImage[]
   featuredImages    FeaturedImage[]
+  variants          ProductVariant[]
   category          Category       @relation(fields: [categoryId], references: [id])
   reviews           Review[]
   wishlist          Wishlist[]
@@ -161,6 +162,49 @@ model FeaturedImage {
   @@map("featured_images")
 }
 
+model ProductVariant {
+  id              String         @id @default(cuid())
+  productId       String         @map("product_id")
+  sku             String         @unique
+  name            String
+  colorHex        String?        @map("color_hex")
+  variantType     VariantType    @default(COLOR) @map("variant_type")
+  price           Decimal?       @db.Decimal(10, 2)
+  compareAtPrice  Decimal?       @map("compare_at_price") @db.Decimal(10, 2)
+  stockQuantity   Int            @default(0) @map("stock_quantity")
+  sortOrder       Int            @default(0) @map("sort_order")
+  isDefault       Boolean        @default(false) @map("is_default")
+  isActive        Boolean        @default(true) @map("is_active")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  product         Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  images          VariantImage[]
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+
+  @@index([productId, sortOrder])
+  @@index([productId, isDefault])
+  @@map("product_variants")
+}
+
+model VariantImage {
+  id                 String         @id @default(cuid())
+  variantId          String         @map("variant_id")
+  url                String
+  cloudinaryPublicId String?        @map("cloudinary_public_id")
+  folder             String?
+  altText            String?        @map("alt_text")
+  sortOrder          Int            @default(0) @map("sort_order")
+  isPrimary          Boolean        @default(false) @map("is_primary")
+  imageType          String         @default("product") @map("image_type")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  variant            ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([variantId, sortOrder])
+  @@index([variantId, isPrimary])
+  @@map("variant_images")
+}
+
 model Cart {
   id        String     @id @default(cuid())
   userId    String     @unique @map("user_id")
@@ -173,17 +217,20 @@ model Cart {
 }
 
 model CartItem {
-  id        String   @id @default(cuid())
-  cartId    String   @map("cart_id")
-  productId String   @map("product_id")
-  quantity  Int      @default(1)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String          @id @default(cuid())
+  cartId    String          @map("cart_id")
+  productId String          @map("product_id")
+  variantId String?         @map("variant_id")
+  quantity  Int             @default(1)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  cart      Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
-  @@unique([cartId, productId])
+  @@unique([cartId, productId, variantId])
   @@index([productId])
+  @@index([variantId])
   @@map("cart_items")
 }
 
@@ -279,20 +326,25 @@ model Order {
 }
 
 model OrderItem {
-  id          String   @id @default(cuid())
-  orderId     String   @map("order_id")
-  productId   String   @map("product_id")
-  productName String   @map("product_name")
-  productSku  String   @map("product_sku")
-  unitPrice   Decimal  @map("unit_price") @db.Decimal(10, 2)
-  quantity    Int
-  totalPrice  Decimal  @map("total_price") @db.Decimal(10, 2)
-  createdAt   DateTime @default(now()) @map("created_at")
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product     Product  @relation(fields: [productId], references: [id])
+  id               String          @id @default(cuid())
+  orderId          String          @map("order_id")
+  productId        String?         @map("product_id")
+  variantId        String?         @map("variant_id")
+  productName      String          @map("product_name")
+  productSku       String          @map("product_sku")
+  variantName      String?         @map("variant_name")
+  variantImageUrl  String?         @map("variant_image_url")
+  unitPrice        Decimal         @map("unit_price") @db.Decimal(10, 2)
+  quantity         Int
+  totalPrice       Decimal         @map("total_price") @db.Decimal(10, 2)
+  createdAt        DateTime        @default(now()) @map("created_at")
+  order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product          Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant          ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([productId])
+  @@index([variantId])
   @@map("order_items")
 }
 
@@ -499,6 +551,19 @@ model TrackingNumberSequence {
   lastNumber Int    @default(0) @map("last_number")
 
   @@map("tracking_number_sequences")
+}
+
+enum VariantType {
+  COLOR
+  SIZE
+  SET
+  STORAGE
+  RAM
+  WEIGHT
+  MATERIAL
+  BUNDLE
+  EDITION
+  OTHER
 }
 
 enum UserRole {

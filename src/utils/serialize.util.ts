@@ -33,16 +33,109 @@ function parseJsonVariants<T>(value: unknown): T[] {
   return value as T[];
 }
 
+function serializeVariant(
+  variant: {
+    id: string;
+    sku: string;
+    name: string;
+    colorHex: string | null;
+    variantType: string;
+    price: Decimal | null;
+    compareAtPrice: Decimal | null;
+    stockQuantity: number;
+    sortOrder: number;
+    isDefault: boolean;
+    isActive: boolean;
+    images: Array<{
+      id: string;
+      url: string;
+      altText: string | null;
+      sortOrder: number;
+      cloudinaryPublicId: string | null;
+      folder: string | null;
+      isPrimary: boolean;
+      imageType: string;
+      createdAt?: Date;
+    }>;
+  },
+) {
+  const productImages = variant.images.filter((img) => img.imageType === 'product');
+  const galleryImages = variant.images.filter((img) => img.imageType === 'gallery');
+  const primary = productImages.find((img) => img.isPrimary) ?? productImages[0];
+
+  return {
+    id: variant.id,
+    sku: variant.sku,
+    name: variant.name,
+    colorHex: variant.colorHex,
+    variantType: variant.variantType,
+    price: decimalToNumber(variant.price),
+    compareAtPrice: decimalToNumber(variant.compareAtPrice),
+    stockQuantity: variant.stockQuantity,
+    sortOrder: variant.sortOrder,
+    isDefault: variant.isDefault,
+    isActive: variant.isActive,
+    image: primary?.url ?? null,
+    images: productImages.map(serializeImage),
+    galleryImages: galleryImages.map(serializeImage),
+  };
+}
+
 export function serializeProduct(
   product: Prisma.ProductGetPayload<{
     include: {
       category: true;
       images: { orderBy: { sortOrder: 'asc' } };
       featuredImages: { orderBy: { sortOrder: 'asc' } };
+      variants: {
+        orderBy: { sortOrder: 'asc' };
+        include: { images: { orderBy: { sortOrder: 'asc' } } };
+      };
     };
   }>,
 ) {
-  const primaryImage = product.images.find((img) => img.isPrimary) ?? product.images[0];
+  const serializedVariants = (product.variants ?? []).map(serializeVariant);
+  const defaultVariant =
+    serializedVariants.find((v) => v.isDefault) ?? serializedVariants[0] ?? null;
+
+  const productPrimary =
+    product.images.find((img) => img.isPrimary) ?? product.images[0] ?? null;
+  const primaryImageUrl = defaultVariant?.image ?? productPrimary?.url ?? null;
+
+  const legacyColorVariants = serializedVariants.length
+    ? serializedVariants
+        .filter((v) => v.variantType === 'COLOR')
+        .map((v) => ({
+          id: v.id,
+          name: v.name,
+          hex: v.colorHex ?? undefined,
+          imageUrl: v.image ?? undefined,
+          price: v.price ?? undefined,
+          compareAtPrice: v.compareAtPrice ?? undefined,
+        }))
+    : parseJsonVariants(product.colorVariants);
+
+  const legacySetVariants = serializedVariants.length
+    ? serializedVariants
+        .filter((v) => v.variantType === 'SET')
+        .map((v) => ({
+          id: v.id,
+          name: v.name,
+          label: v.name,
+          price: v.price ?? undefined,
+          compareAtPrice: v.compareAtPrice ?? undefined,
+        }))
+    : parseJsonVariants(product.setVariants);
+
+  const listingGallery = defaultVariant
+    ? [
+        ...(defaultVariant.images.length
+          ? defaultVariant.images.map((img) => img.url)
+          : defaultVariant.galleryImages.map((img) => img.url)),
+      ]
+    : product.images.length
+      ? product.images.map((img) => img.url)
+      : product.featuredImages.map((img) => img.url);
 
   return {
     id: product.id,
@@ -50,9 +143,9 @@ export function serializeProduct(
     slug: product.slug,
     description: product.description,
     sku: product.sku,
-    price: Number(product.price),
-    compareAtPrice: decimalToNumber(product.compareAtPrice),
-    stockQuantity: product.stockQuantity,
+    price: defaultVariant?.price ?? Number(product.price),
+    compareAtPrice: defaultVariant?.compareAtPrice ?? decimalToNumber(product.compareAtPrice),
+    stockQuantity: defaultVariant?.stockQuantity ?? product.stockQuantity,
     lowStockThreshold: product.lowStockThreshold,
     categoryId: product.categoryId,
     category: product.category.name,
@@ -60,14 +153,13 @@ export function serializeProduct(
     isActive: product.isActive,
     isFeatured: product.isFeatured,
     sizes: product.sizes ?? [],
-    colorVariants: parseJsonVariants(product.colorVariants),
-    setVariants: parseJsonVariants(product.setVariants),
-    image: primaryImage?.url ?? null,
+    variants: serializedVariants,
+    colorVariants: legacyColorVariants,
+    setVariants: legacySetVariants,
+    image: primaryImageUrl,
     images: product.images.map(serializeImage),
     featuredImages: product.featuredImages.map(serializeImage),
-    galleryImages: product.images.length
-      ? product.images.map((img) => img.url)
-      : product.featuredImages.map((img) => img.url),
+    galleryImages: listingGallery,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
   };
@@ -106,6 +198,9 @@ export function serializeOrder(
     items: order.items.map((item) => ({
       id: item.id,
       productId: item.productId,
+      variantId: item.variantId,
+      variantName: item.variantName,
+      variantImageUrl: item.variantImageUrl,
       productName: item.productName,
       productSku: item.productSku,
       unitPrice: Number(item.unitPrice),

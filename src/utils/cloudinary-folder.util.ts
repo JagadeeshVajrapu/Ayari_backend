@@ -26,3 +26,19 @@ export function buildProductMediaFolder(
   const product = slugifyFolderSegment(productName, 'product');
   return `products/${category}/${product}/${type}`;
 }
+
+/**
+ * Variant-specific folder:
+ * products/{Category}/{ProductName}/variants/{VariantName}/{product-images|gallery-images}
+ */
+export function buildVariantMediaFolder(
+  categoryName: string,
+  productName: string,
+  variantName: string,
+  type: ProductImageFolderType,
+): string {
+  const category = slugifyFolderSegment(categoryName, 'uncategorized');
+  const product = slugifyFolderSegment(productName, 'product');
+  const variant = slugifyFolderSegment(variantName, 'variant');
+  return `products/${category}/${product}/variants/${variant}/${type}`;
+}

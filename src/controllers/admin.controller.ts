@@ -49,8 +49,8 @@ export class AdminController {
   });
 
   deleteProduct = asyncHandler(async (req: Request, res: Response) => {
-    await adminService.deleteProduct(paramId(req));
-    sendSuccess(res, 'Product deleted', null);
+    const result = await adminService.deleteProduct(paramId(req));
+    sendSuccess(res, 'Product permanently deleted', result);
   });
 
   uploadProductImage = asyncHandler(async (req: Request, res: Response) => {
@@ -64,9 +64,14 @@ export class AdminController {
 
     const categoryName = String(req.query.categoryName ?? req.body?.categoryName ?? 'uncategorized');
     const productName = String(req.query.productName ?? req.body?.productName ?? 'product');
+    const variantName = String(req.query.variantName ?? req.body?.variantName ?? '').trim();
 
-    const { buildProductMediaFolder } = await import('../utils/cloudinary-folder.util');
-    const folder = buildProductMediaFolder(categoryName, productName, folderType);
+    const { buildProductMediaFolder, buildVariantMediaFolder } = await import(
+      '../utils/cloudinary-folder.util'
+    );
+    const folder = variantName
+      ? buildVariantMediaFolder(categoryName, productName, variantName, folderType)
+      : buildProductMediaFolder(categoryName, productName, folderType);
 
     const { uploadImage } = await import('../services/cloudinary.service');
     const result = await uploadImage(req.file.buffer, folder, req.file.originalname);

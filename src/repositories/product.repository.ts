@@ -1,12 +1,18 @@
 import { Prisma, Product } from '@prisma/client';
 import { prisma } from '../database/prisma';
 import { deleteImages } from '../services/cloudinary.service';
-import type { ProductImageInput } from '../validators/admin.validator';
+import type { ProductImageInput, ProductVariantInput } from '../validators/admin.validator';
+import {
+  createProductVariantsOnCreate,
+  productVariantInclude,
+  syncProductVariants,
+} from '../utils/product-variant.sync';
 
 const productInclude = {
   category: true,
   images: { orderBy: { sortOrder: 'asc' as const } },
   featuredImages: { orderBy: { sortOrder: 'asc' as const } },
+  variants: productVariantInclude,
 } satisfies Prisma.ProductInclude;
 
 type ProductWithRelations = Prisma.ProductGetPayload<{ include: typeof productInclude }>;
@@ -147,10 +153,11 @@ export class ProductRepository {
     sizes?: string[];
     colorVariants?: unknown;
     setVariants?: unknown;
+    variants?: ProductVariantInput[];
     productImages: ProductImageInput[];
     featuredImages: ProductImageInput[];
   }): Promise<ProductWithRelations> {
-    return prisma.product.create({
+    const product = await prisma.product.create({
       data: {
         name: data.name,
         slug: data.slug,
@@ -158,7 +165,7 @@ export class ProductRepository {
         sku: data.sku,
         price: data.price,
         compareAtPrice: data.compareAtPrice,
-        stockQuantity: data.stockQuantity,
+        stockQuantity: data.variants?.length ? 0 : data.stockQuantity,
         lowStockThreshold: data.lowStockThreshold ?? 5,
         categoryId: data.categoryId,
         isActive: data.isActive ?? true,
@@ -166,19 +173,23 @@ export class ProductRepository {
         sizes: data.sizes ?? [],
         colorVariants: (data.colorVariants ?? []) as Prisma.InputJsonValue,
         setVariants: (data.setVariants ?? []) as Prisma.InputJsonValue,
-        images: {
-          create: (() => {
-            const primaryIndex = resolvePrimaryIndex(data.productImages);
-            return data.productImages.map((img, i) => ({
-              url: img.url,
-              cloudinaryPublicId: img.cloudinaryPublicId ?? null,
-              folder: img.folder ?? null,
-              altText: img.altText ?? data.name,
-              isPrimary: i === primaryIndex,
-              sortOrder: img.sortOrder ?? i,
-            }));
-          })(),
-        },
+        ...(data.productImages.length
+          ? {
+              images: {
+                create: (() => {
+                  const primaryIndex = resolvePrimaryIndex(data.productImages);
+                  return data.productImages.map((img, i) => ({
+                    url: img.url,
+                    cloudinaryPublicId: img.cloudinaryPublicId ?? null,
+                    folder: img.folder ?? null,
+                    altText: img.altText ?? data.name,
+                    isPrimary: i === primaryIndex,
+                    sortOrder: img.sortOrder ?? i,
+                  }));
+                })(),
+              },
+            }
+          : {}),
         featuredImages: {
           create: (data.featuredImages ?? []).map((img, i) => ({
             url: img.url,
@@ -191,6 +202,13 @@ export class ProductRepository {
       },
       include: productInclude,
     });
+
+    if (data.variants?.length) {
+      await createProductVariantsOnCreate(product.id, data.variants, data.name);
+      return prisma.product.findUniqueOrThrow({ where: { id: product.id }, include: productInclude });
+    }
+
+    return product;
   }
 
   async update(
@@ -210,11 +228,13 @@ export class ProductRepository {
       sizes: string[];
       colorVariants: unknown;
       setVariants: unknown;
+      variants?: ProductVariantInput[];
       productImages: ProductImageInput[];
       featuredImages: ProductImageInput[];
     }>,
   ): Promise<ProductWithRelations> {
-    const { productImages, featuredImages, colorVariants, setVariants, ...productData } = data;
+    const { productImages, featuredImages, colorVariants, setVariants, variants, ...productData } =
+      data;
 
     const existing = await prisma.product.findUniqueOrThrow({
       where: { id },
@@ -239,7 +259,29 @@ export class ProductRepository {
     }
 
     if (featuredImages) {
-      await syncFeaturedImages(id, existing.featuredImages, featuredImages, productData.name ?? existing.name);
+      await syncFeaturedImages(
+        id,
+        existing.featuredImages,
+        featuredImages,
+        productData.name ?? existing.name,
+      );
+    }
+
+    if (variants) {
+      await syncProductVariants(
+        id,
+        existing.variants.map((v) => ({
+          id: v.id,
+          sku: v.sku,
+          images: v.images.map((img) => ({
+            id: img.id,
+            cloudinaryPublicId: img.cloudinaryPublicId,
+            imageType: img.imageType,
+          })),
+        })),
+        variants,
+        productData.name ?? existing.name,
+      );
     }
 
     return prisma.product.findUniqueOrThrow({
@@ -251,16 +293,24 @@ export class ProductRepository {
   async delete(id: string): Promise<Product> {
     const product = await prisma.product.findUniqueOrThrow({
       where: { id },
-      include: { images: true, featuredImages: true },
+      include: {
+        images: true,
+        featuredImages: true,
+        variants: { include: { images: true } },
+      },
     });
 
     const publicIds = [
       ...product.images.map((img) => img.cloudinaryPublicId),
       ...product.featuredImages.map((img) => img.cloudinaryPublicId),
+      ...product.variants.flatMap((v) => v.images.map((img) => img.cloudinaryPublicId)),
     ].filter(Boolean) as string[];
 
+    // Delete the database record first. If a foreign-key constraint blocks it,
+    // the product and its media remain intact.
+    const deleted = await prisma.product.delete({ where: { id } });
     await deleteImages(publicIds);
-    return prisma.product.delete({ where: { id } });
+    return deleted;
   }
 
   async countLowStock(): Promise<number> {

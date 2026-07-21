@@ -20,6 +20,40 @@ import {
   UpdateProfileInput,
 } from '../validators/admin.validator';
 
+async function assertVariantSkusAvailable(
+  variants: CreateProductInput['variants'] | UpdateProductInput['variants'],
+  excludeProductId?: string,
+) {
+  if (!variants?.length) return;
+
+  const skus = variants.map((v) => v.sku.trim());
+  if (new Set(skus).size !== skus.length) {
+    throw new ConflictError('Duplicate variant SKU within product');
+  }
+
+  const productSkuConflict = await prisma.product.findFirst({
+    where: {
+      sku: { in: skus },
+      ...(excludeProductId ? { id: { not: excludeProductId } } : {}),
+    },
+    select: { sku: true },
+  });
+  if (productSkuConflict) {
+    throw new ConflictError(`SKU already used by another product: ${productSkuConflict.sku}`);
+  }
+
+  const takenVariant = await prisma.productVariant.findFirst({
+    where: {
+      sku: { in: skus },
+      ...(excludeProductId ? { productId: { not: excludeProductId } } : {}),
+    },
+    select: { sku: true },
+  });
+  if (takenVariant) {
+    throw new ConflictError(`Variant SKU already exists: ${takenVariant.sku}`);
+  }
+}
+
 export class AdminService {
   async getDashboard() {
     const [revenueStats, customerCount, productCount, lowStock, monthlyRevenue, recentOrders, statusBreakdown] =
@@ -73,6 +107,8 @@ export class AdminService {
     const existingSku = await prisma.product.findUnique({ where: { sku: input.sku } });
     if (existingSku) throw new ConflictError('SKU already exists');
 
+    await assertVariantSkusAvailable(input.variants);
+
     const slugs = (await prisma.product.findMany({ select: { slug: true } })).map((p) => p.slug);
     const slug = uniqueSlug(input.name, slugs);
 
@@ -87,6 +123,10 @@ export class AdminService {
     if (input.sku && input.sku !== existing.sku) {
       const skuTaken = await prisma.product.findUnique({ where: { sku: input.sku } });
       if (skuTaken) throw new ConflictError('SKU already exists');
+    }
+
+    if (input.variants) {
+      await assertVariantSkusAvailable(input.variants, id);
     }
 
     let slug = existing.slug;
@@ -105,6 +145,7 @@ export class AdminService {
     const existing = await productRepository.findById(id);
     if (!existing) throw new NotFoundError('Product not found');
     await productRepository.delete(id);
+    return { mode: 'deleted' as const };
   }
 
   async listOrders(params: { page: number; limit: number; search?: string; status?: OrderStatus }) {
@@ -179,11 +220,17 @@ export class AdminService {
   }
 
   async deleteCategory(id: string) {
-    try {
-      await categoryRepository.delete(id);
-    } catch {
-      throw new BadRequestError('Cannot delete category that has products');
+    const existing = await categoryRepository.findById(id);
+    if (!existing) throw new NotFoundError('Category not found');
+
+    const productCount = await prisma.product.count({ where: { categoryId: id } });
+    if (productCount > 0) {
+      throw new ConflictError(
+        `Cannot delete category "${existing.name}" because it contains ${productCount} product(s). Move or delete them first.`,
+      );
     }
+
+    await categoryRepository.delete(id);
   }
 
   async updateProfile(userId: string, input: UpdateProfileInput) {

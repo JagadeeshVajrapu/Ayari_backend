@@ -14,6 +14,7 @@ const shippingSchema = z.object({
 
 const lineItemSchema = z.object({
   productId: z.string().min(1),
+  variantId: z.string().min(1).optional(),
   quantity: z.number().int().positive(),
 });
 

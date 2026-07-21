@@ -4,7 +4,8 @@ import { prisma } from '../database/prisma';
 const categoryListInclude = {
   _count: {
     select: {
-      products: { where: { isActive: true } },
+      // Admin deletion must account for inactive products too.
+      products: true,
     },
   },
   products: {

@@ -21,8 +21,11 @@ const EXPRESS_SHIPPING = 499;
 
 export interface ResolvedLineItem {
   productId: string;
+  variantId?: string;
   name: string;
   sku: string;
+  variantName?: string;
+  variantImageUrl?: string;
   unitPrice: number;
   quantity: number;
   lineTotal: number;
@@ -48,6 +51,61 @@ function calculateShipping(subtotal: number, shippingMethod: 'standard' | 'expre
   return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING;
 }
 
+async function decrementOrderItemStock(
+  tx: Prisma.TransactionClient,
+  item: {
+    productId: string | null;
+    variantId: string | null;
+    quantity: number;
+    productName: string;
+  },
+): Promise<void> {
+  if (!item.productId) {
+    throw new BadRequestError(
+      `${item.productName} is no longer available. Cancel this pending order and place a new one.`,
+    );
+  }
+
+  if (item.variantId) {
+    const updated = await tx.productVariant.updateMany({
+      where: {
+        id: item.variantId,
+        productId: item.productId,
+        isActive: true,
+        stockQuantity: { gte: item.quantity },
+      },
+      data: { stockQuantity: { decrement: item.quantity } },
+    });
+
+    if (updated.count === 0) {
+      throw new BadRequestError(`Insufficient stock for ${item.productName}`);
+    }
+
+    const variants = await tx.productVariant.findMany({
+      where: { productId: item.productId, isActive: true },
+      select: { stockQuantity: true },
+    });
+    const totalStock = variants.reduce((sum, v) => sum + v.stockQuantity, 0);
+    await tx.product.update({
+      where: { id: item.productId },
+      data: { stockQuantity: totalStock },
+    });
+    return;
+  }
+
+  const updated = await tx.product.updateMany({
+    where: {
+      id: item.productId,
+      stockQuantity: { gte: item.quantity },
+    },
+    data: { stockQuantity: { decrement: item.quantity } },
+  });
+
+  if (updated.count === 0) {
+    throw new BadRequestError(`Insufficient stock for ${item.productName}`);
+  }
+}
+
 export class CheckoutService {
   async resolveLineItems(items: CreatePaymentOrderInput['items']): Promise<ResolvedLineItem[]> {
     const resolved: ResolvedLineItem[] = [];
@@ -58,10 +116,52 @@ export class CheckoutService {
           isActive: true,
           OR: [{ id: item.productId }, { slug: item.productId }],
         },
+        include: {
+          variants: {
+            where: { isActive: true },
+            orderBy: { sortOrder: 'asc' },
+            include: { images: { orderBy: { sortOrder: 'asc' } } },
+          },
+        },
       });
 
       if (!product) {
         throw new BadRequestError(`Product not found: ${item.productId}`);
+      }
+
+      const activeVariants = product.variants;
+
+      if (activeVariants.length > 0) {
+        const variant =
+          (item.variantId
+            ? activeVariants.find((v) => v.id === item.variantId)
+            : activeVariants.find((v) => v.isDefault)) ?? activeVariants[0];
+
+        if (!variant) {
+          throw new BadRequestError(`Variant not found for ${product.name}`);
+        }
+
+        if (variant.stockQuantity < item.quantity) {
+          throw new BadRequestError(`Insufficient stock for ${product.name} (${variant.name})`);
+        }
+
+        const unitPrice = variant.price != null ? Number(variant.price) : Number(product.price);
+        const primaryImage =
+          variant.images.find((img) => img.isPrimary && img.imageType === 'product') ??
+          variant.images.find((img) => img.imageType === 'product');
+
+        resolved.push({
+          productId: product.id,
+          variantId: variant.id,
+          name: product.name,
+          sku: variant.sku,
+          variantName: variant.name,
+          variantImageUrl: primaryImage?.url ?? undefined,
+          unitPrice,
+          quantity: item.quantity,
+          lineTotal: unitPrice * item.quantity,
+        });
+        continue;
       }
 
       if (product.stockQuantity < item.quantity) {
@@ -183,6 +283,9 @@ export class CheckoutService {
           items: {
             create: lineItems.map((item) => ({
               productId: item.productId,
+              variantId: item.variantId ?? null,
+              variantName: item.variantName ?? null,
+              variantImageUrl: item.variantImageUrl ?? null,
               productName: item.name,
               productSku: item.sku,
               unitPrice: item.unitPrice,
@@ -258,17 +361,12 @@ export class CheckoutService {
 
     return prisma.$transaction(async (tx) => {
       for (const item of order.items) {
-        const updated = await tx.product.updateMany({
-          where: {
-            id: item.productId,
-            stockQuantity: { gte: item.quantity },
-          },
-          data: { stockQuantity: { decrement: item.quantity } },
+        await decrementOrderItemStock(tx, {
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          productName: item.productName,
         });
-
-        if (updated.count === 0) {
-          throw new BadRequestError(`Insufficient stock for ${item.productName}`);
-        }
       }
 
       if (order.couponId) {
@@ -347,17 +445,12 @@ export class CheckoutService {
 
     const fulfilled = await prisma.$transaction(async (tx) => {
       for (const item of order.items) {
-        const updated = await tx.product.updateMany({
-          where: {
-            id: item.productId,
-            stockQuantity: { gte: item.quantity },
-          },
-          data: { stockQuantity: { decrement: item.quantity } },
+        await decrementOrderItemStock(tx, {
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          productName: item.productName,
         });
-
-        if (updated.count === 0) {
-          throw new BadRequestError(`Insufficient stock for ${item.productName}`);
-        }
       }
 
       if (order.couponId) {
