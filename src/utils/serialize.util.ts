@@ -81,6 +81,21 @@ function serializeVariant(
   };
 }
 
+function firstVariantWithImages(
+  variants: Array<{
+    image: string | null;
+    images: Array<{ url: string }>;
+    galleryImages: Array<{ url: string }>;
+    variantType: string;
+  }>,
+) {
+  const preferColor = variants.filter((v) => v.variantType === 'COLOR');
+  const pool = preferColor.length ? preferColor : variants;
+  return (
+    pool.find((v) => v.image || v.images.length > 0 || v.galleryImages.length > 0) ?? null
+  );
+}
+
 export function serializeProduct(
   product: Prisma.ProductGetPayload<{
     include: {
@@ -97,10 +112,17 @@ export function serializeProduct(
   const serializedVariants = (product.variants ?? []).map(serializeVariant);
   const defaultVariant =
     serializedVariants.find((v) => v.isDefault) ?? serializedVariants[0] ?? null;
+  const imageSourceVariant =
+    defaultVariant?.image ||
+    defaultVariant?.images.length ||
+    defaultVariant?.galleryImages.length
+      ? defaultVariant
+      : firstVariantWithImages(serializedVariants);
 
   const productPrimary =
     product.images.find((img) => img.isPrimary) ?? product.images[0] ?? null;
-  const primaryImageUrl = defaultVariant?.image ?? productPrimary?.url ?? null;
+  const primaryImageUrl =
+    imageSourceVariant?.image ?? productPrimary?.url ?? null;
 
   const legacyColorVariants = serializedVariants.length
     ? serializedVariants
@@ -127,15 +149,20 @@ export function serializeProduct(
         }))
     : parseJsonVariants(product.setVariants);
 
-  const listingGallery = defaultVariant
+  const listingGallery = imageSourceVariant
     ? [
-        ...(defaultVariant.images.length
-          ? defaultVariant.images.map((img) => img.url)
-          : defaultVariant.galleryImages.map((img) => img.url)),
+        ...(imageSourceVariant.images.length
+          ? imageSourceVariant.images.map((img) => img.url)
+          : imageSourceVariant.galleryImages.map((img) => img.url)),
       ]
-    : product.images.length
-      ? product.images.map((img) => img.url)
-      : product.featuredImages.map((img) => img.url);
+    : [];
+
+  const resolvedGallery =
+    listingGallery.length > 0
+      ? listingGallery
+      : product.images.length
+        ? product.images.map((img) => img.url)
+        : product.featuredImages.map((img) => img.url);
 
   return {
     id: product.id,
@@ -159,7 +186,7 @@ export function serializeProduct(
     image: primaryImageUrl,
     images: product.images.map(serializeImage),
     featuredImages: product.featuredImages.map(serializeImage),
-    galleryImages: listingGallery,
+    galleryImages: resolvedGallery,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
   };

@@ -109,14 +109,18 @@ async function uploadToCloudinary(
   const normalizedFolder = folder.replace(/^\/+|\/+$/g, '');
 
   return new Promise((resolve, reject) => {
+    const publicIdBase = filename
+      ? `${sanitizePublicId(filename)}-${Date.now()}`
+      : undefined;
+
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder: normalizedFolder,
         resource_type: 'image',
-        public_id: filename ? sanitizePublicId(filename) : undefined,
+        public_id: publicIdBase,
         overwrite: false,
         unique_filename: true,
-        quality: 'auto:good',
+        use_filename: !publicIdBase,
       },
       (error, result) => {
         if (error || !result) {
