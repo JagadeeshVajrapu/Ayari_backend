@@ -38,6 +38,26 @@ app.post(
   paymentController.razorpayWebhook,
 );
 
+// Public Shiprocket webhook (no JWT). Registered early so it never hits auth-gated routers.
+app.get('/api/v1/shipments/shiprocket/webhook', (_req, res) => {
+  res.json({
+    success: true,
+    message: 'Shiprocket webhook endpoint. Use POST with JSON payload.',
+  });
+});
+app.post(
+  '/api/v1/shipments/shiprocket/webhook',
+  express.json({ limit: '2mb' }),
+  async (req, res, next) => {
+    try {
+      const { shipmentController } = await import('./controllers/shipment.controller');
+      await shipmentController.shiprocketWebhook(req, res, next);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

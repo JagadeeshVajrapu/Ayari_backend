@@ -121,9 +121,13 @@ export class TrackingRepository {
 
   buildTrackingUrlForShipment(shipment: {
     trackingNumber: string;
+    trackingUrl?: string | null;
+    awbNumber?: string | null;
     courierPartner: { trackingUrlTemplate: string | null };
   }) {
-    return buildTrackingUrl(shipment.courierPartner.trackingUrlTemplate, shipment.trackingNumber);
+    if (shipment.trackingUrl) return shipment.trackingUrl;
+    const trackingNumber = shipment.awbNumber ?? shipment.trackingNumber;
+    return buildTrackingUrl(shipment.courierPartner.trackingUrlTemplate, trackingNumber);
   }
 }
 

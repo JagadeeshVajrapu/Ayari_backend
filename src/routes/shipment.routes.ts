@@ -97,6 +97,22 @@ adminShipmentRouter.post(
   shipmentController.addTrackingEvent,
 );
 
+adminShipmentRouter.post('/:id/shiprocket/sync', ...adminOnly, shipmentController.syncShiprocket);
+adminShipmentRouter.post('/:id/shiprocket/pickup', ...adminOnly, shipmentController.requestPickup);
+adminShipmentRouter.post('/:id/shiprocket/label', ...adminOnly, shipmentController.generateLabel);
+adminShipmentRouter.post(
+  '/:id/shiprocket/refresh-tracking',
+  ...adminOnly,
+  shipmentController.refreshShiprocketTracking,
+);
+adminShipmentRouter.post(
+  '/:id/shiprocket/cancel',
+  ...adminOnly,
+  shipmentController.cancelShiprocketShipment,
+);
+adminShipmentRouter.post('/:id/shiprocket/return', ...adminOnly, shipmentController.createReturn);
+adminShipmentRouter.get('/:id/invoice', ...adminOnly, shipmentController.getInvoiceHtml);
+
 export const adminCourierRouter = Router();
 adminCourierRouter.use(...adminOnly);
 
@@ -109,8 +125,11 @@ export const customerShipmentRouter = Router();
 customerShipmentRouter.use(authenticate);
 
 customerShipmentRouter.get('/orders/:orderId/shipment', shipmentController.getMyOrderShipment);
+customerShipmentRouter.get('/orders/:orderId/invoice', shipmentController.getCustomerInvoiceHtml);
 
 export const publicShipmentRouter = Router();
 
 publicShipmentRouter.get('/number/:shipmentNumber', shipmentController.trackByShipmentNumber);
 publicShipmentRouter.get('/tracking/:trackingNumber', shipmentController.trackByTrackingNumber);
+// Shiprocket webhook is mounted at /shipments/shiprocket/webhook in routes/index.ts
+// (and app.ts) so it is not accidentally covered by JWT-protected routers.

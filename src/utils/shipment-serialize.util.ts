@@ -130,19 +130,34 @@ export function serializeShipment(
   shipment: ShipmentWithRelations,
   options?: { includeHistory?: boolean },
 ): ShipmentDto {
+  const shiprocketTrackingUrl =
+    (shipment as { trackingUrl?: string | null }).trackingUrl ??
+    buildTrackingUrl(shipment.courierPartner.trackingUrlTemplate, shipment.trackingNumber);
+  const courierDisplayName =
+    (shipment as { courierName?: string | null }).courierName ?? shipment.courierPartner.name;
+
   return {
     id: shipment.id,
     shipmentNumber: shipment.shipmentNumber,
     orderId: shipment.orderId,
     orderNumber: shipment.order.orderNumber,
     courierPartnerId: shipment.courierPartnerId,
-    courierName: shipment.courierPartner.name,
+    courierName: courierDisplayName,
     trackingNumber: shipment.trackingNumber,
-    trackingUrl: buildTrackingUrl(shipment.courierPartner.trackingUrlTemplate, shipment.trackingNumber),
+    trackingUrl: shiprocketTrackingUrl,
     estimatedDelivery: shipment.estimatedDelivery.toISOString(),
     status: shipment.status,
     createdAt: shipment.createdAt.toISOString(),
     updatedAt: shipment.updatedAt.toISOString(),
+    shiprocketOrderId: (shipment as { shiprocketOrderId?: string | null }).shiprocketOrderId ?? null,
+    shiprocketShipmentId:
+      (shipment as { shiprocketShipmentId?: string | null }).shiprocketShipmentId ?? null,
+    awbNumber: (shipment as { awbNumber?: string | null }).awbNumber ?? null,
+    shippingLabelUrl: (shipment as { shippingLabelUrl?: string | null }).shippingLabelUrl ?? null,
+    pickupStatus: (shipment as { pickupStatus?: string | null }).pickupStatus ?? null,
+    deliveryStatus: (shipment as { deliveryStatus?: string | null }).deliveryStatus ?? null,
+    deliveredAt: (shipment as { deliveredAt?: Date | null }).deliveredAt?.toISOString?.() ?? null,
+    invoiceUrl: (shipment as { invoiceUrl?: string | null }).invoiceUrl ?? null,
     ...(options?.includeHistory
       ? {
           statusHistory: shipment.statusHistory.map(serializeStatusHistory),

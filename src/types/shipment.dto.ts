@@ -46,6 +46,14 @@ export interface ShipmentDto {
   status: ShipmentStatus;
   createdAt: string;
   updatedAt: string;
+  shiprocketOrderId?: string | null;
+  shiprocketShipmentId?: string | null;
+  awbNumber?: string | null;
+  shippingLabelUrl?: string | null;
+  pickupStatus?: string | null;
+  deliveryStatus?: string | null;
+  deliveredAt?: string | null;
+  invoiceUrl?: string | null;
   statusHistory?: ShipmentStatusHistoryDto[];
   trackingEvents?: ShipmentTrackingDto[];
 }

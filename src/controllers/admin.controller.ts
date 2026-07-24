@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { OrderStatus } from '@prisma/client';
 import { adminService, productService } from '../services/admin.service';
+import { addressService } from '../services/address.service';
 import { BadRequestError } from '../utils/appError.util';
 import { asyncHandler } from '../utils/asyncHandler.util';
 import { sendSuccess } from '../utils/apiResponse.util';
@@ -14,6 +15,7 @@ import {
   UpdateProfileInput,
   UpdateUserStatusInput,
 } from '../validators/admin.validator';
+import type { AddressInput, UpdateAddressInput } from '../validators/address.validator';
 
 function paramId(req: Request): string {
   const id = req.params.id;
@@ -149,6 +151,35 @@ export class UserController {
     const limit = Number(req.query.limit ?? 10);
     const data = await adminService.getUserOrders(req.user!.id, page, limit);
     sendSuccess(res, 'Orders retrieved', data);
+  });
+
+  listAddresses = asyncHandler(async (req: Request, res: Response) => {
+    const addresses = await addressService.list(req.user!.id);
+    sendSuccess(res, 'Addresses retrieved', { addresses });
+  });
+
+  createAddress = asyncHandler(async (req: Request, res: Response) => {
+    const address = await addressService.create(req.user!.id, req.body as AddressInput);
+    sendSuccess(res, 'Address created', { address }, 201);
+  });
+
+  updateAddress = asyncHandler(async (req: Request, res: Response) => {
+    const address = await addressService.update(
+      req.user!.id,
+      paramId(req),
+      req.body as UpdateAddressInput,
+    );
+    sendSuccess(res, 'Address updated', { address });
+  });
+
+  setDefaultAddress = asyncHandler(async (req: Request, res: Response) => {
+    const address = await addressService.setDefault(req.user!.id, paramId(req));
+    sendSuccess(res, 'Default address updated', { address });
+  });
+
+  deleteAddress = asyncHandler(async (req: Request, res: Response) => {
+    const result = await addressService.remove(req.user!.id, paramId(req));
+    sendSuccess(res, 'Address deleted', result);
   });
 }
 

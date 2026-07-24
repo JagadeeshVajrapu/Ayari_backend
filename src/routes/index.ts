@@ -8,6 +8,7 @@ import {
   customerShipmentRouter,
   publicShipmentRouter,
 } from './shipment.routes';
+import { shipmentController } from '../controllers/shipment.controller';
 import trackingRoutes from './tracking.routes';
 import notificationRoutes, { adminNotificationRouter } from './notification.routes';
 
@@ -35,6 +36,15 @@ router.get('/health', (_req, res) => {
     data: { status: 'healthy' },
   });
 });
+
+// Shiprocket webhook must stay public (no JWT). Auth is via SHIPROCKET_WEBHOOK_SECRET when set.
+router.get('/shipments/shiprocket/webhook', (_req, res) => {
+  res.json({
+    success: true,
+    message: 'Shiprocket webhook endpoint. Use POST with JSON payload.',
+  });
+});
+router.post('/shipments/shiprocket/webhook', shipmentController.shiprocketWebhook);
 
 router.use('/', trackingRoutes);
 

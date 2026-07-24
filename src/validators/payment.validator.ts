@@ -25,6 +25,7 @@ export const createPaymentOrderSchema = z.object({
   shippingMethod: z.enum(['standard', 'express']),
   orderNotes: z.string().max(500).optional(),
   couponCode: z.string().optional(),
+  saveAddress: z.boolean().optional(),
 });
 
 export const verifyRazorpayPaymentSchema = z.object({

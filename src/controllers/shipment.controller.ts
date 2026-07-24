@@ -143,6 +143,75 @@ export class ShipmentController {
     const shipment = await shipmentService.trackByTrackingNumber(trackingNumber);
     sendSuccess(res, 'Shipment tracking retrieved', { shipment });
   });
+
+  requestPickup = asyncHandler(async (req: Request, res: Response) => {
+    const { shiprocketService } = await import('../services/shiprocket.service');
+    const shipment = await shiprocketService.requestPickup(paramId(req));
+    const detail = await shipmentService.getAdminShipmentDetail(shipment.id);
+    sendSuccess(res, 'Pickup requested', { shipment: detail });
+  });
+
+  generateLabel = asyncHandler(async (req: Request, res: Response) => {
+    const { shiprocketService } = await import('../services/shiprocket.service');
+    await shiprocketService.generateLabel(paramId(req));
+    const detail = await shipmentService.getAdminShipmentDetail(paramId(req));
+    sendSuccess(res, 'Shipping label generated', { shipment: detail });
+  });
+
+  refreshShiprocketTracking = asyncHandler(async (req: Request, res: Response) => {
+    const { shiprocketService } = await import('../services/shiprocket.service');
+    await shiprocketService.refreshTracking(paramId(req));
+    const detail = await shipmentService.getAdminShipmentDetail(paramId(req));
+    sendSuccess(res, 'Tracking refreshed', { shipment: detail });
+  });
+
+  cancelShiprocketShipment = asyncHandler(async (req: Request, res: Response) => {
+    const { shiprocketService } = await import('../services/shiprocket.service');
+    await shiprocketService.cancelShipment(paramId(req));
+    const detail = await shipmentService.getAdminShipmentDetail(paramId(req));
+    sendSuccess(res, 'Shipment cancelled on Shiprocket', { shipment: detail });
+  });
+
+  createReturn = asyncHandler(async (req: Request, res: Response) => {
+    const { shiprocketService } = await import('../services/shiprocket.service');
+    await shiprocketService.createReturn(paramId(req));
+    const detail = await shipmentService.getAdminShipmentDetail(paramId(req));
+    sendSuccess(res, 'Return initiated', { shipment: detail });
+  });
+
+  syncShiprocket = asyncHandler(async (req: Request, res: Response) => {
+    const { shiprocketService } = await import('../services/shiprocket.service');
+    await shiprocketService.fulfillShipmentWithShiprocket(paramId(req));
+    const detail = await shipmentService.getAdminShipmentDetail(paramId(req));
+    sendSuccess(res, 'Shiprocket shipment synced', { shipment: detail });
+  });
+
+  getInvoiceHtml = asyncHandler(async (req: Request, res: Response) => {
+    const { invoiceService } = await import('../services/invoice.service');
+    const detail = await shipmentService.getAdminShipmentDetail(paramId(req));
+    const { html } = await invoiceService.buildOrderInvoiceHtml(detail.orderId);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  });
+
+  getCustomerInvoiceHtml = asyncHandler(async (req: Request, res: Response) => {
+    const { invoiceService } = await import('../services/invoice.service');
+    const orderId = paramOrderId(req);
+    // Ensure the authenticated customer owns this order
+    await shipmentService.getShipmentForCustomer(orderId, req.user!.id);
+    const { html } = await invoiceService.buildOrderInvoiceHtml(orderId);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  });
+
+  shiprocketWebhook = asyncHandler(async (req: Request, res: Response) => {
+    const { shiprocketService } = await import('../services/shiprocket.service');
+    const result = await shiprocketService.handleWebhook(
+      (req.body ?? {}) as Record<string, unknown>,
+      req.headers['x-api-key'] as string | undefined,
+    );
+    sendSuccess(res, 'Webhook processed', result);
+  });
 }
 
 export const shipmentController = new ShipmentController();

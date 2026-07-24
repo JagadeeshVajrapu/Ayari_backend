@@ -13,6 +13,7 @@ import {
   updateProfileSchema,
   updateUserStatusSchema,
 } from '../validators/admin.validator';
+import { addressInputSchema, updateAddressSchema } from '../validators/address.validator';
 
 const adminRouter = Router();
 const adminOnly = [authenticate, authorize(UserRole.ADMIN)] as const;
@@ -72,3 +73,16 @@ export const userRouter = Router();
 userRouter.use(authenticate);
 userRouter.patch('/me', validate(updateProfileSchema), userController.updateProfile);
 userRouter.get('/me/orders', userController.getMyOrders);
+userRouter.get('/me/addresses', userController.listAddresses);
+userRouter.post(
+  '/me/addresses',
+  validate(addressInputSchema),
+  userController.createAddress,
+);
+userRouter.patch(
+  '/me/addresses/:id',
+  validate(updateAddressSchema),
+  userController.updateAddress,
+);
+userRouter.post('/me/addresses/:id/default', userController.setDefaultAddress);
+userRouter.delete('/me/addresses/:id', userController.deleteAddress);

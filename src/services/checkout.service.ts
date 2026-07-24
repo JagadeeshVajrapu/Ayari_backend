@@ -252,6 +252,13 @@ export class CheckoutService {
       : null;
 
     const order = await prisma.$transaction(async (tx) => {
+      if (input.saveAddress) {
+        await tx.address.updateMany({
+          where: { userId, isDefault: true },
+          data: { isDefault: false },
+        });
+      }
+
       const address = await tx.address.create({
         data: {
           userId,
@@ -263,7 +270,7 @@ export class CheckoutService {
           zipCode: input.shipping.zipCode,
           country: input.shipping.country ?? 'IN',
           phone: input.shipping.phone,
-          isDefault: false,
+          isDefault: Boolean(input.saveAddress),
         },
       });
 
@@ -467,6 +474,13 @@ export class CheckoutService {
           userId,
           status: shipment.status,
         });
+
+        // Background Shiprocket booking (no-op when credentials missing)
+        void import('./shiprocket.service').then(({ shiprocketService }) =>
+          shiprocketService.fulfillShipmentWithShiprocket(shipment.id).catch((error) => {
+            console.error(`[shiprocket] post-payment booking failed for ${orderId}:`, error);
+          }),
+        );
       }
     } catch (error) {
       console.error(`[checkout] shipment create failed for order ${orderId}:`, error);

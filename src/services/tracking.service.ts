@@ -118,8 +118,14 @@ export class TrackingService {
       paymentStatusLabel: PAYMENT_STATUS_LABELS[payment?.status ?? PaymentStatus.PENDING],
       shipmentStatus: shipment?.status ?? null,
       shipmentStatusLabel: shipment ? SHIPMENT_STATUS_LABELS[shipment.status] : null,
-      courierPartner: shipment?.courierPartner.name ?? null,
-      trackingNumber: shipment?.trackingNumber ?? null,
+      courierPartner:
+        (shipment as { courierName?: string | null } | null)?.courierName ??
+        shipment?.courierPartner.name ??
+        null,
+      trackingNumber:
+        (shipment as { awbNumber?: string | null } | null)?.awbNumber ??
+        shipment?.trackingNumber ??
+        null,
       deliveryInstructions: order.notes,
       customerName,
       customerPhone: order.shippingAddress.phone ?? order.user.phone,
@@ -145,8 +151,11 @@ export class TrackingService {
         ? {
             id: shipment.id,
             shipmentNumber: shipment.shipmentNumber,
-            courierPartner: shipment.courierPartner.name,
-            trackingNumber: shipment.trackingNumber,
+            courierPartner:
+              (shipment as { courierName?: string | null }).courierName ??
+              shipment.courierPartner.name,
+            trackingNumber:
+              (shipment as { awbNumber?: string | null }).awbNumber ?? shipment.trackingNumber,
             trackingUrl: trackingRepository.buildTrackingUrlForShipment(shipment),
             packageWeight: null,
             packageDimensions: null,

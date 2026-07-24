@@ -1,5 +1,16 @@
 import { z } from 'zod';
 
+/** Treat blank env values as unset so optional URL/string fields do not fail validation. */
+const optionalString = z.preprocess(
+  (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+  z.string().optional(),
+);
+
+const optionalUrl = z.preprocess(
+  (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+  z.string().url().optional(),
+);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(5000),
@@ -15,29 +26,38 @@ const envSchema = z.object({
     .string()
     .transform((val) => val === 'true')
     .default('false'),
-  RAZORPAY_KEY_ID: z.string().optional(),
-  RAZORPAY_KEY_SECRET: z.string().optional(),
-  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  RAZORPAY_KEY_ID: optionalString,
+  RAZORPAY_KEY_SECRET: optionalString,
+  RAZORPAY_WEBHOOK_SECRET: optionalString,
   /** When "true", skip live Razorpay API and use local mock checkout (useful on localhost). */
   RAZORPAY_MOCK: z
     .string()
     .optional()
     .transform((val) => val === 'true'),
-  SMTP_HOST: z.string().optional(),
+  SMTP_HOST: optionalString,
   SMTP_PORT: z.coerce.number().default(587),
   SMTP_SECURE: z
     .string()
     .transform((val) => val === 'true')
     .default('false'),
-  SMTP_USER: z.string().optional(),
+  SMTP_USER: optionalString,
   SMTP_PASS: z
-    .string()
-    .optional()
+    .preprocess(
+      (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+      z.string().optional(),
+    )
     .transform((val) => val?.replace(/\s/g, '')),
-  SMTP_FROM: z.string().optional(),
-  CLOUDINARY_CLOUD_NAME: z.string().optional(),
-  CLOUDINARY_API_KEY: z.string().optional(),
-  CLOUDINARY_API_SECRET: z.string().optional(),
+  SMTP_FROM: optionalString,
+  CLOUDINARY_CLOUD_NAME: optionalString,
+  CLOUDINARY_API_KEY: optionalString,
+  CLOUDINARY_API_SECRET: optionalString,
+  SHIPROCKET_EMAIL: optionalString,
+  SHIPROCKET_PASSWORD: optionalString,
+  SHIPROCKET_TOKEN: optionalString,
+  SHIPROCKET_API: optionalUrl,
+  SHIPROCKET_WEBHOOK_SECRET: optionalString,
+  SHIPROCKET_PICKUP_PINCODE: optionalString,
+  SHIPROCKET_PICKUP_LOCATION: optionalString,
 });
 
 export function isCloudinaryEnvConfigured(): boolean {
@@ -94,4 +114,12 @@ export function getRazorpayKeySecret(): string | undefined {
 
 export function isSmtpConfigured(): boolean {
   return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
+}
+
+export function isShiprocketConfigured(): boolean {
+  return Boolean(trimOptional(env.SHIPROCKET_EMAIL) && trimOptional(env.SHIPROCKET_PASSWORD));
+}
+
+export function getShiprocketApiBase(): string {
+  return trimOptional(env.SHIPROCKET_API) ?? 'https://apiv2.shiprocket.in/v1/external';
 }

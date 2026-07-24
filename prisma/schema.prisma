@@ -411,29 +411,42 @@ model CourierPartner {
 }
 
 model Shipment {
-  id                String                  @id @default(cuid())
-  shipmentNumber    String                  @unique @map("shipment_number")
-  orderId           String                  @unique @map("order_id")
-  courierPartnerId  String                  @map("courier_partner_id")
-  trackingNumber    String                  @unique @map("tracking_number")
-  estimatedDelivery DateTime                @map("estimated_delivery")
-  shippingMethod    ShippingMethod          @default(STANDARD) @map("shipping_method")
-  warehouse         String?                 @default("Ayari Fulfillment Center")
-  packageWeight     String?                 @map("package_weight")
-  packageDimensions String?                 @map("package_dimensions")
-  status            ShipmentStatus          @default(PENDING)
-  createdAt         DateTime                @default(now()) @map("created_at")
-  updatedAt         DateTime                @updatedAt @map("updated_at")
-  order             Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  courierPartner    CourierPartner          @relation(fields: [courierPartnerId], references: [id])
-  statusHistory     ShipmentStatusHistory[]
-  trackingEvents    ShipmentTracking[]
-  notes             ShipmentNote[]
-  deliveryAttempts  DeliveryAttempt[]
+  id                   String                  @id @default(cuid())
+  shipmentNumber       String                  @unique @map("shipment_number")
+  orderId              String                  @unique @map("order_id")
+  courierPartnerId     String                  @map("courier_partner_id")
+  trackingNumber       String                  @unique @map("tracking_number")
+  estimatedDelivery    DateTime                @map("estimated_delivery")
+  shippingMethod       ShippingMethod          @default(STANDARD) @map("shipping_method")
+  warehouse            String?                 @default("Ayari Fulfillment Center")
+  packageWeight        String?                 @map("package_weight")
+  packageDimensions    String?                 @map("package_dimensions")
+  status               ShipmentStatus          @default(PENDING)
+  // Shiprocket integration (optional — populated when credentials configured)
+  shiprocketOrderId    String?                 @map("shiprocket_order_id")
+  shiprocketShipmentId String?                 @map("shiprocket_shipment_id")
+  awbNumber            String?                 @unique @map("awb_number")
+  courierName          String?                 @map("courier_name")
+  shippingLabelUrl     String?                 @map("shipping_label_url")
+  trackingUrl          String?                 @map("tracking_url")
+  pickupStatus         PickupStatus?           @map("pickup_status")
+  deliveryStatus       String?                 @map("delivery_status")
+  deliveredAt          DateTime?               @map("delivered_at")
+  invoiceUrl           String?                 @map("invoice_url")
+  createdAt            DateTime                @default(now()) @map("created_at")
+  updatedAt            DateTime                @updatedAt @map("updated_at")
+  order                Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  courierPartner       CourierPartner          @relation(fields: [courierPartnerId], references: [id])
+  statusHistory        ShipmentStatusHistory[]
+  trackingEvents       ShipmentTracking[]
+  notes                ShipmentNote[]
+  deliveryAttempts     DeliveryAttempt[]
 
   @@index([status])
   @@index([courierPartnerId])
   @@index([trackingNumber])
+  @@index([awbNumber])
+  @@index([shiprocketOrderId])
   @@index([createdAt])
   @@index([status, createdAt])
   @@map("shipments")
@@ -623,6 +636,15 @@ enum ShipmentStatus {
   DELIVERED
   CANCELLED
   RETURNED
+}
+
+enum PickupStatus {
+  NOT_REQUESTED
+  REQUESTED
+  SCHEDULED
+  PICKED_UP
+  CANCELLED
+  FAILED
 }
 
 enum ShippingMethod {
