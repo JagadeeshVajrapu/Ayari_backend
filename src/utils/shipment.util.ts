@@ -17,7 +17,10 @@ export function generateShipmentNumber(): string {
 }
 
 export async function generateAyariTrackingNumber(
-  tx: Prisma.TransactionClient,
+  // Accept interactive tx client or the root Prisma client
+  tx: {
+    trackingNumberSequence: Prisma.TransactionClient['trackingNumberSequence'];
+  },
 ): Promise<string> {
   const year = new Date().getFullYear();
   const sequence = await tx.trackingNumberSequence.upsert({

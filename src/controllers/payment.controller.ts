@@ -32,6 +32,12 @@ export class PaymentController {
     sendSuccess(res, 'Order retrieved', order);
   });
 
+  abandonOrder = asyncHandler(async (req: Request, res: Response) => {
+    const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.orderId;
+    const order = await paymentService.abandonOrder(req.user!.id, orderId);
+    sendSuccess(res, 'Pending payment cancelled', order);
+  });
+
   razorpayWebhook = asyncHandler(async (req: Request, res: Response) => {
     const signature = req.headers['x-razorpay-signature'] as string | undefined;
     const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body);

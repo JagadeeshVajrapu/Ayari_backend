@@ -13,6 +13,8 @@ router.use(authenticate);
 
 router.get('/orders/:orderId', paymentController.getOrder);
 
+router.post('/orders/:orderId/abandon', paymentController.abandonOrder);
+
 router.post(
   '/razorpay/create-order',
   validate(createPaymentOrderSchema),

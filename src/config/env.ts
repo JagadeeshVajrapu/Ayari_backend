@@ -6,8 +6,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
-  JWT_ACCESS_EXPIRES_IN: z.string().default('7d'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
+  JWT_ACCESS_EXPIRES_IN: z.string().default('14d'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('90d'),
   PASSWORD_RESET_EXPIRES_IN: z.string().default('1h'),
   OTP_EXPIRES_IN: z.string().default('10m'),
   FRONTEND_URL: z.string().url().default('http://localhost:3001'),
@@ -18,6 +18,11 @@ const envSchema = z.object({
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  /** When "true", skip live Razorpay API and use local mock checkout (useful on localhost). */
+  RAZORPAY_MOCK: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true'),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().default(587),
   SMTP_SECURE: z
@@ -66,8 +71,25 @@ function loadEnv(): Env {
 
 export const env = loadEnv();
 
+function trimOptional(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/** Live Razorpay only when both keys exist and mock mode is off. */
 export function isRazorpayConfigured(): boolean {
-  return Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
+  if (env.RAZORPAY_MOCK) return false;
+  const keyId = trimOptional(env.RAZORPAY_KEY_ID);
+  const keySecret = trimOptional(env.RAZORPAY_KEY_SECRET);
+  return Boolean(keyId && keySecret);
+}
+
+export function getRazorpayKeyId(): string | undefined {
+  return trimOptional(env.RAZORPAY_KEY_ID);
+}
+
+export function getRazorpayKeySecret(): string | undefined {
+  return trimOptional(env.RAZORPAY_KEY_SECRET);
 }
 
 export function isSmtpConfigured(): boolean {

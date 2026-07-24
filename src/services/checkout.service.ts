@@ -11,7 +11,7 @@ import { shipmentService } from './shipment.service';
 import { realtimeService } from './realtime.service';
 import { notificationService } from './notification.service';
 import { NotificationType } from '@prisma/client';
-import { BadRequestError, ConflictError, NotFoundError } from '../utils/appError.util';
+import { BadRequestError, NotFoundError } from '../utils/appError.util';
 import type { CreatePaymentOrderInput } from '../validators/payment.validator';
 
 const FREE_SHIPPING_THRESHOLD = 5000;
@@ -308,14 +308,8 @@ export class CheckoutService {
       return createdOrder;
     });
 
-    void notificationService.create({
-      userId,
-      type: NotificationType.ORDER_CREATED,
-      message: `Your order ${orderNumber} has been placed.`,
-      orderId: order.id,
-      metadata: { orderNumber, total: totals.total },
-      sendEmail: true,
-    });
+    // Do NOT notify "order placed" here — payment may still fail / be cancelled.
+    // Notifications are sent only after fulfillPaidOrder / fulfillCodOrder.
 
     return { order, totals, lineItems };
   }
@@ -352,134 +346,235 @@ export class CheckoutService {
     if (!order.payment) throw new BadRequestError('Payment record missing');
 
     if (order.payment.status === PaymentStatus.CAPTURED) {
+      if (order.status === OrderStatus.CANCELLED) {
+        return prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: OrderStatus.CONFIRMED,
+            placedAt: order.placedAt ?? new Date(),
+            cancelledAt: null,
+          },
+          include: { payment: true, items: true, shippingAddress: true },
+        });
+      }
+
+      // Ensure shipment exists even if a previous attempt timed out after capture
+      void this.ensureShipmentForOrder(order.id, order.orderNumber, order.userId);
       return order;
     }
 
-    if (order.status === OrderStatus.CANCELLED) {
-      throw new ConflictError('Order was cancelled');
-    }
+    // Keep the interactive transaction short: stock + payment + order only.
+    // Shipment / emails run AFTER commit so Neon latency cannot fail a paid order.
+    const updatedOrder = await prisma.$transaction(
+      async (tx) => {
+        const payment = await tx.payment.findUnique({ where: { id: order.payment!.id } });
+        if (payment?.status === PaymentStatus.CAPTURED) {
+          return tx.order.findUniqueOrThrow({
+            where: { id: order.id },
+            include: { payment: true, items: true, shippingAddress: true },
+          });
+        }
 
-    return prisma.$transaction(async (tx) => {
-      for (const item of order.items) {
-        await decrementOrderItemStock(tx, {
-          productId: item.productId,
-          variantId: item.variantId,
-          quantity: item.quantity,
-          productName: item.productName,
+        for (const item of order.items) {
+          await decrementOrderItemStock(tx, {
+            productId: item.productId,
+            variantId: item.variantId,
+            quantity: item.quantity,
+            productName: item.productName,
+          });
+        }
+
+        if (order.couponId) {
+          await tx.coupon.update({
+            where: { id: order.couponId },
+            data: { usedCount: { increment: 1 } },
+          });
+        }
+
+        await tx.cartItem.deleteMany({
+          where: { cart: { userId: order.userId } },
         });
-      }
 
-      if (order.couponId) {
-        await tx.coupon.update({
-          where: { id: order.couponId },
-          data: { usedCount: { increment: 1 } },
+        await tx.payment.update({
+          where: { id: order.payment!.id },
+          data: {
+            status: PaymentStatus.CAPTURED,
+            transactionId: params.razorpayPaymentId ?? order.payment!.transactionId,
+            gatewayRef: params.razorpayOrderId ?? order.payment!.gatewayRef,
+            paidAt: new Date(),
+            failureReason: null,
+          },
         });
-      }
 
-      await tx.cartItem.deleteMany({
-        where: { cart: { userId: order.userId } },
-      });
+        return tx.order.update({
+          where: { id: order.id },
+          data: {
+            status: OrderStatus.CONFIRMED,
+            placedAt: new Date(),
+            cancelledAt: null,
+          },
+          include: { payment: true, items: true, shippingAddress: true },
+        });
+      },
+      { maxWait: 10_000, timeout: 20_000 },
+    );
 
-      await tx.payment.update({
-        where: { id: order.payment!.id },
-        data: {
-          status: PaymentStatus.CAPTURED,
-          transactionId: params.razorpayPaymentId ?? order.payment!.transactionId,
-          gatewayRef: params.razorpayOrderId ?? order.payment!.gatewayRef,
-          paidAt: new Date(),
-          failureReason: null,
-        },
-      });
+    // Shipment must not delay payment verification response
+    void this.ensureShipmentForOrder(order.id, order.orderNumber, order.userId);
 
-      const updatedOrder = await tx.order.update({
-        where: { id: order.id },
-        data: {
-          status: OrderStatus.CONFIRMED,
-          placedAt: new Date(),
-        },
-        include: { payment: true, items: true, shippingAddress: true },
-      });
+    void notificationService.create({
+      userId: order.userId,
+      type: NotificationType.ORDER_CREATED,
+      message: `Your order ${order.orderNumber} has been placed.`,
+      orderId: order.id,
+      metadata: { orderNumber: order.orderNumber, total: order.totalAmount },
+      sendEmail: true,
+    });
 
-      await shipmentService.createForPaidOrder(order.id, tx);
+    void notificationService.create({
+      userId: order.userId,
+      type: NotificationType.PAYMENT_SUCCESSFUL,
+      message: `Payment received for order ${order.orderNumber}.`,
+      orderId: order.id,
+      metadata: { orderNumber: order.orderNumber, amount: order.totalAmount },
+      sendEmail: true,
+    });
 
-      return updatedOrder;
-    }).then(async (updatedOrder) => {
-      const shipment = await prisma.shipment.findUnique({
-        where: { orderId: order.id },
-        select: { id: true, status: true },
-      });
+    void notificationService.create({
+      userId: order.userId,
+      type: NotificationType.ORDER_CONFIRMED,
+      message: `Order ${order.orderNumber} has been confirmed.`,
+      orderId: order.id,
+      metadata: { orderNumber: order.orderNumber },
+    });
 
+    return updatedOrder;
+  }
+
+  /** Create shipment after payment is committed — never block verify on this. */
+  private async ensureShipmentForOrder(
+    orderId: string,
+    orderNumber: string,
+    userId: string,
+  ): Promise<void> {
+    try {
+      const shipment = await shipmentService.createForPaidOrder(orderId);
       if (shipment) {
         void realtimeService.emitShipmentCreated({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
+          orderId,
+          orderNumber,
           shipmentId: shipment.id,
-          userId: order.userId,
+          userId,
           status: shipment.status,
         });
       }
-
-      void notificationService.create({
-        userId: order.userId,
-        type: NotificationType.PAYMENT_SUCCESSFUL,
-        message: `Payment received for order ${order.orderNumber}.`,
-        orderId: order.id,
-        metadata: { orderNumber: order.orderNumber, amount: order.totalAmount },
-        sendEmail: true,
-      });
-
-      void notificationService.create({
-        userId: order.userId,
-        type: NotificationType.ORDER_CONFIRMED,
-        message: `Order ${order.orderNumber} has been confirmed.`,
-        orderId: order.id,
-        metadata: { orderNumber: order.orderNumber },
-      });
-
-      return updatedOrder;
-    });
+    } catch (error) {
+      console.error(`[checkout] shipment create failed for order ${orderId}:`, error);
+    }
   }
 
   async fulfillCodOrder(userId: string, input: CreatePaymentOrderInput) {
     const { order } = await this.createPendingOrder(userId, input, PaymentMethod.COD);
 
-    const fulfilled = await prisma.$transaction(async (tx) => {
-      for (const item of order.items) {
-        await decrementOrderItemStock(tx, {
-          productId: item.productId,
-          variantId: item.variantId,
-          quantity: item.quantity,
-          productName: item.productName,
+    const fulfilled = await prisma.$transaction(
+      async (tx) => {
+        for (const item of order.items) {
+          await decrementOrderItemStock(tx, {
+            productId: item.productId,
+            variantId: item.variantId,
+            quantity: item.quantity,
+            productName: item.productName,
+          });
+        }
+
+        if (order.couponId) {
+          await tx.coupon.update({
+            where: { id: order.couponId },
+            data: { usedCount: { increment: 1 } },
+          });
+        }
+
+        await tx.cartItem.deleteMany({
+          where: { cart: { userId } },
         });
-      }
 
-      if (order.couponId) {
-        await tx.coupon.update({
-          where: { id: order.couponId },
-          data: { usedCount: { increment: 1 } },
+        return tx.order.update({
+          where: { id: order.id },
+          data: {
+            status: OrderStatus.CONFIRMED,
+            placedAt: new Date(),
+          },
+          include: { payment: true, items: true, shippingAddress: true },
         });
-      }
+      },
+      { maxWait: 10_000, timeout: 20_000 },
+    );
 
-      await tx.cartItem.deleteMany({
-        where: { cart: { userId } },
-      });
+    void this.ensureShipmentForOrder(fulfilled.id, fulfilled.orderNumber, userId);
 
-      await tx.payment.update({
-        where: { orderId: order.id },
-        data: { status: PaymentStatus.PENDING },
-      });
+    void notificationService.create({
+      userId,
+      type: NotificationType.ORDER_CREATED,
+      message: `Your order ${fulfilled.orderNumber} has been placed.`,
+      orderId: fulfilled.id,
+      metadata: { orderNumber: fulfilled.orderNumber, total: fulfilled.totalAmount },
+      sendEmail: true,
+    });
 
-      return tx.order.update({
-        where: { id: order.id },
-        data: {
-          status: OrderStatus.CONFIRMED,
-          placedAt: new Date(),
-        },
-        include: { payment: true, items: true, shippingAddress: true },
-      });
+    void notificationService.create({
+      userId,
+      type: NotificationType.ORDER_CONFIRMED,
+      message: `Order ${fulfilled.orderNumber} has been confirmed (Cash on Delivery).`,
+      orderId: fulfilled.id,
+      metadata: { orderNumber: fulfilled.orderNumber },
     });
 
     return fulfilled;
+  }
+
+  /**
+   * Cancel a checkout that never completed payment (Razorpay dismiss / abandon).
+   * No-op if payment was already captured or order already confirmed.
+   */
+  async abandonPendingOrder(orderId: string, userId: string) {
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, userId },
+      include: { payment: true },
+    });
+
+    if (!order) throw new NotFoundError('Order not found');
+
+    if (
+      order.payment?.status === PaymentStatus.CAPTURED ||
+      order.status === OrderStatus.CONFIRMED ||
+      order.status === OrderStatus.PROCESSING ||
+      order.status === OrderStatus.SHIPPED ||
+      order.status === OrderStatus.DELIVERED
+    ) {
+      return order;
+    }
+
+    if (order.status === OrderStatus.CANCELLED) {
+      return order;
+    }
+
+    // Only abandon true pending checkouts — never touch paid payments.
+    if (order.payment && order.payment.status !== PaymentStatus.PENDING) {
+      return order;
+    }
+
+    if (order.payment) {
+      await paymentRepository.update(order.payment.id, {
+        status: PaymentStatus.FAILED,
+        failureReason: 'Payment cancelled by customer',
+      });
+    }
+
+    return prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.CANCELLED, cancelledAt: new Date() },
+      include: { payment: true, items: true },
+    });
   }
 
   async markPaymentFailed(orderId: string, reason: string) {

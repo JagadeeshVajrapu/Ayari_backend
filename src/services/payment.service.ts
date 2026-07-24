@@ -1,6 +1,11 @@
 import crypto from 'crypto';
 import { PaymentMethod } from '@prisma/client';
-import { env, isRazorpayConfigured } from '../config/env';
+import {
+  env,
+  getRazorpayKeyId,
+  getRazorpayKeySecret,
+  isRazorpayConfigured,
+} from '../config/env';
 import { checkoutService } from './checkout.service';
 import { paymentRepository } from '../repositories/payment.repository';
 import { BadRequestError, NotFoundError } from '../utils/appError.util';
@@ -39,13 +44,14 @@ function buildOrderResponse(order: {
   orderNumber: string;
   status: string;
   totalAmount: { toString(): string } | number;
-  payment: { paymentMethod: string } | null;
+  payment: { paymentMethod: string; status?: string } | null;
 }) {
   return {
     orderId: order.id,
     orderNumber: order.orderNumber,
     status: order.status,
     paymentMethod: order.payment?.paymentMethod ?? 'RAZORPAY',
+    paymentStatus: order.payment?.status ?? null,
     total: Number(order.totalAmount),
   };
 }
@@ -54,9 +60,15 @@ async function createRazorpayApiOrder(
   amountInPaise: number,
   receipt: string,
 ): Promise<RazorpayApiOrder> {
-  const credentials = Buffer.from(
-    `${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`,
-  ).toString('base64');
+  const keyId = getRazorpayKeyId();
+  const keySecret = getRazorpayKeySecret();
+  if (!keyId || !keySecret) {
+    throw new BadRequestError('Razorpay is not configured');
+  }
+
+  // Razorpay receipt max length is 40 characters
+  const safeReceipt = receipt.slice(0, 40);
+  const credentials = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
 
   const response = await fetch('https://api.razorpay.com/v1/orders', {
     method: 'POST',
@@ -67,14 +79,30 @@ async function createRazorpayApiOrder(
     body: JSON.stringify({
       amount: amountInPaise,
       currency: 'INR',
-      receipt,
+      receipt: safeReceipt,
       notes: { source: 'ayari-checkout' },
     }),
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new BadRequestError(`Razorpay order creation failed: ${errorBody}`);
+    let description = errorBody;
+    try {
+      const parsed = JSON.parse(errorBody) as { error?: { description?: string; code?: string } };
+      description = parsed.error?.description ?? errorBody;
+    } catch {
+      // keep raw body
+    }
+
+    if (response.status === 401 || /authentication failed/i.test(description)) {
+      throw new BadRequestError(
+        'Razorpay authentication failed. Your KEY_ID and KEY_SECRET do not match. ' +
+          'Open https://dashboard.razorpay.com/app/keys (Test Mode ON), copy both keys into backend/.env, ' +
+          'set the same KEY_ID in frontend/.env.local as NEXT_PUBLIC_RAZORPAY_KEY_ID, then restart the backend.',
+      );
+    }
+
+    throw new BadRequestError(`Razorpay order creation failed: ${description}`);
   }
 
   return response.json() as Promise<RazorpayApiOrder>;
@@ -85,19 +113,46 @@ function verifyRazorpayPaymentSignature(
   paymentId: string,
   signature: string,
 ): boolean {
+  const keySecret = getRazorpayKeySecret();
+  if (!keySecret) return false;
+
   const expected = crypto
-    .createHmac('sha256', env.RAZORPAY_KEY_SECRET!)
+    .createHmac('sha256', keySecret)
     .update(`${orderId}|${paymentId}`)
     .digest('hex');
 
-  return expected === signature;
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  const actualBuf = Buffer.from(signature.trim(), 'utf8');
+  if (expectedBuf.length !== actualBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, actualBuf);
+}
+
+/** Fallback when HMAC fails: confirm payment with Razorpay Payments API. */
+async function fetchRazorpayPayment(paymentId: string): Promise<{
+  id: string;
+  order_id: string;
+  status: string;
+} | null> {
+  const keyId = getRazorpayKeyId();
+  const keySecret = getRazorpayKeySecret();
+  if (!keyId || !keySecret || !paymentId || paymentId.startsWith('pay_mock_')) {
+    return null;
+  }
+
+  const credentials = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+  const response = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Basic ${credentials}` },
+  });
+
+  if (!response.ok) return null;
+  return response.json() as Promise<{ id: string; order_id: string; status: string }>;
 }
 
 function verifyWebhookSignature(body: string, signature: string): boolean {
   if (!env.RAZORPAY_WEBHOOK_SECRET) return false;
 
   const expected = crypto
-    .createHmac('sha256', env.RAZORPAY_WEBHOOK_SECRET)
+    .createHmac('sha256', env.RAZORPAY_WEBHOOK_SECRET.trim())
     .update(body)
     .digest('hex');
 
@@ -136,7 +191,7 @@ export class PaymentService {
       razorpayOrderId: razorpayOrder.id,
       amount: razorpayOrder.amount,
       currency: razorpayOrder.currency,
-      keyId: env.RAZORPAY_KEY_ID!,
+      keyId: getRazorpayKeyId()!,
       mock: false,
       total: totals.total,
     };
@@ -149,6 +204,12 @@ export class PaymentService {
       return buildOrderResponse(order);
     }
 
+    const isMockPayload =
+      input.razorpayOrderId.startsWith('order_mock_') ||
+      input.razorpayPaymentId.startsWith('pay_mock_') ||
+      input.razorpaySignature === 'mock_signature';
+
+    // Local mock checkout — only when Razorpay live mode is off
     if (!isRazorpayConfigured()) {
       const fulfilled = await checkoutService.fulfillPaidOrder({
         orderId: order.id,
@@ -159,19 +220,42 @@ export class PaymentService {
       return buildOrderResponse(fulfilled);
     }
 
+    // Frontend sent mock verify while backend is in live Test Mode
+    if (isMockPayload) {
+      throw new BadRequestError(
+        'Payment mode mismatch: backend expects a real Razorpay payment. Refresh the page and complete checkout in the Razorpay window.',
+      );
+    }
+
     if (order.payment?.gatewayRef && order.payment.gatewayRef !== input.razorpayOrderId) {
       throw new BadRequestError('Razorpay order mismatch');
     }
 
-    const isValid = verifyRazorpayPaymentSignature(
+    let isValid = verifyRazorpayPaymentSignature(
       input.razorpayOrderId,
       input.razorpayPaymentId,
       input.razorpaySignature,
     );
 
+    // Secondary check via Payments API (covers rare HMAC edge cases)
     if (!isValid) {
-      await checkoutService.markPaymentFailed(order.id, 'Invalid payment signature');
-      throw new BadRequestError('Payment verification failed. Invalid signature.');
+      const payment = await fetchRazorpayPayment(input.razorpayPaymentId);
+      const paidStatuses = new Set(['authorized', 'captured']);
+      if (
+        payment &&
+        payment.order_id === input.razorpayOrderId &&
+        paidStatuses.has(payment.status)
+      ) {
+        isValid = true;
+      }
+    }
+
+    if (!isValid) {
+      // Do NOT cancel the order here — Razorpay may have charged the customer.
+      // Keep PENDING so a retry / Payments API recovery can still fulfill it.
+      throw new BadRequestError(
+        'Payment verification failed. Please try again. If money was deducted, open Orders or contact support with your payment ID.',
+      );
     }
 
     const fulfilled = await checkoutService.fulfillPaidOrder({
@@ -191,6 +275,11 @@ export class PaymentService {
 
   async getOrder(userId: string, orderId: string) {
     const order = await checkoutService.getOrderForUser(orderId, userId);
+    return buildOrderResponse(order);
+  }
+
+  async abandonOrder(userId: string, orderId: string) {
+    const order = await checkoutService.abandonPendingOrder(orderId, userId);
     return buildOrderResponse(order);
   }
 

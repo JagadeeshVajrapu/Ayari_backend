@@ -76,13 +76,14 @@ export class ShipmentService {
     void notificationService.emitAfterTransaction(notification, { orderNumber });
   }
 
-  async createForPaidOrder(orderId: string, tx: Prisma.TransactionClient) {
-    const existing = await tx.shipment.findUnique({ where: { orderId } });
+  async createForPaidOrder(orderId: string, tx?: Prisma.TransactionClient) {
+    const client = tx ?? prisma;
+    const existing = await client.shipment.findUnique({ where: { orderId } });
     if (existing) return existing;
 
     let courier = await shipmentRepository.getDefaultCourierPartner(tx);
     if (!courier) {
-      courier = await tx.courierPartner.create({
+      courier = await client.courierPartner.create({
         data: {
           name: 'Ayari Logistics',
           code: 'AYARI',
